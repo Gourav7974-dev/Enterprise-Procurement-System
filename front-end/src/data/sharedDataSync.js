@@ -18,9 +18,15 @@ let revision = 0;
 let applyingRemote = false;
 let syncStarted = false;
 let writeQueue = Promise.resolve();
+let writePending = false;
 let localDirty = false;
 let lastServerData = null;
+let localGeneration = 0;
+let loadInFlight = null;
+let retryTimer = null;
 let remoteChangeHandler = () => {};
+
+const MAX_WRITE_ATTEMPTS = 12;
 
 const clone = (value) => value == null ? value : JSON.parse(JSON.stringify(value));
 const equal = (left, right) => JSON.stringify(left) === JSON.stringify(right);
@@ -137,8 +143,9 @@ const announceRemoteChange = () => {
 
 const saveRemote = async () => {
   if (!API_BASE_URL || applyingRemote) return;
-  for (let attempt = 0; attempt < 4; attempt += 1) {
+  for (let attempt = 0; attempt < MAX_WRITE_ATTEMPTS; attempt += 1) {
     const submitted = snapshot();
+    const submittedGeneration = localGeneration;
     try {
       const response = await fetch(`${API_BASE_URL}/demo-state`, {
         method: 'PUT',
@@ -147,70 +154,140 @@ const saveRemote = async () => {
       });
       const result = await response.json();
       if (response.status === 409) {
-        const local = snapshot();
-        const merged = mergeSharedSnapshots(lastServerData || {}, local, result.data || {});
-        revision = Number(result.revision) || 0;
-        lastServerData = clone(result.data || {});
-        applyingRemote = true;
-        applyData(merged);
-        saveLocal();
-        applyingRemote = false;
-        localDirty = true;
-        announceRemoteChange();
+        const remoteRevision = Number(result.revision) || 0;
+        const remote = result.data && typeof result.data === 'object' ? result.data : {};
+        // A slow conflict response can arrive after a newer poll/write completed.
+        // Never roll this browser back to an older server revision.
+        if (remoteRevision >= revision) {
+          const merged = mergeSharedSnapshots(lastServerData || {}, snapshot(), remote);
+          revision = remoteRevision;
+          lastServerData = clone(remote);
+          applyingRemote = true;
+          try {
+            applyData(merged);
+            saveLocal();
+          } finally {
+            applyingRemote = false;
+          }
+          localDirty = true;
+          announceRemoteChange();
+        }
+        // Let other active browsers finish their write before trying the CAS again.
+        await new Promise((resolve) => setTimeout(resolve, Math.min(600, 60 * (attempt + 1)) + Math.random() * 80));
         continue;
       }
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      revision = result.revision;
-      lastServerData = clone(result.data || submitted);
-      localDirty = false;
-      return;
+      const committedRevision = Number(result.revision) || 0;
+      const committedData = result.data && typeof result.data === 'object' ? result.data : submitted;
+      if (committedRevision >= revision) {
+        revision = committedRevision;
+        lastServerData = clone(committedData);
+      }
+
+      if (submittedGeneration === localGeneration) {
+        localDirty = false;
+        return;
+      }
+
+      // Preserve any edits made while this request was in flight, then commit them
+      // against the revision returned by the server.
+      const merged = mergeSharedSnapshots(submitted, snapshot(), committedData);
+      applyingRemote = true;
+      try {
+        applyData(merged);
+        saveLocal();
+      } finally {
+        applyingRemote = false;
+      }
+      localDirty = true;
+      announceRemoteChange();
     } catch (error) {
       applyingRemote = false;
       console.warn('Shared demo data could not reach the backend; browser storage is still active.', error);
       return;
     }
   }
-  console.warn('Shared demo data changed in several browsers at once; sync will retry on the next update.');
+  console.warn('Shared demo data is still changing in another browser; sync will retry shortly.');
+  scheduleRemoteRetry();
+};
+
+const scheduleRemoteRetry = () => {
+  if (retryTimer != null || typeof window === 'undefined') return;
+  retryTimer = window.setTimeout(() => {
+    retryTimer = null;
+    queueRemoteWrite();
+  }, 1000 + Math.random() * 500);
+};
+
+const queueRemoteWrite = () => {
+  if (!API_BASE_URL || applyingRemote) return writeQueue;
+  localDirty = true;
+  if (writePending) return writeQueue;
+  writePending = true;
+  writeQueue = writeQueue.catch(() => {}).then(saveRemote).finally(() => {
+    writePending = false;
+    if (localDirty) scheduleRemoteRetry();
+  });
+  return writeQueue;
 };
 
 const loadRemote = async () => {
   if (!API_BASE_URL) return;
+  if (loadInFlight) return loadInFlight;
+  loadInFlight = (async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/demo-state`, { signal: AbortSignal.timeout(5000) });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const state = await response.json();
+      const remoteRevision = Number(state.revision) || 0;
+      // Ignore an older GET that completed after a newer poll or successful write.
+      if (remoteRevision < revision) return;
+      revision = remoteRevision;
+      const remote = state.data && typeof state.data === 'object' ? state.data : null;
+      if (!remote) {
+        lastServerData = null;
+        if (Object.values(snapshot()).some((value) => Array.isArray(value) && value.length)) {
+          await queueRemoteWrite();
+        }
+        return;
+      }
+
+      if (localDirty) {
+        const merged = mergeSharedSnapshots(lastServerData || {}, snapshot(), remote);
+        lastServerData = clone(remote);
+        applyingRemote = true;
+        try {
+          applyData(merged);
+          saveLocal();
+        } finally {
+          applyingRemote = false;
+        }
+        localDirty = !equal(merged, remote);
+        announceRemoteChange();
+        if (localDirty) queueRemoteWrite();
+        return;
+      }
+
+      if (!lastServerData || !equal(lastServerData, remote)) {
+        lastServerData = clone(remote);
+        applyingRemote = true;
+        try {
+          applyData(remote);
+          saveLocal();
+        } finally {
+          applyingRemote = false;
+        }
+        announceRemoteChange();
+      }
+    } catch (error) {
+      applyingRemote = false;
+      console.warn('Shared demo backend is unavailable; using this browser’s saved demo data.', error);
+    }
+  })();
   try {
-    const response = await fetch(`${API_BASE_URL}/demo-state`, { signal: AbortSignal.timeout(5000) });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const state = await response.json();
-    revision = Number(state.revision) || 0;
-    const remote = state.data && typeof state.data === 'object' ? state.data : null;
-    if (!remote) {
-      lastServerData = null;
-      if (Object.values(snapshot()).some((value) => Array.isArray(value) && value.length)) await saveRemote();
-      return;
-    }
-
-    if (localDirty) {
-      const merged = mergeSharedSnapshots(lastServerData || {}, snapshot(), remote);
-      lastServerData = clone(remote);
-      applyingRemote = true;
-      applyData(merged);
-      saveLocal();
-      applyingRemote = false;
-      localDirty = true;
-      announceRemoteChange();
-      writeQueue = writeQueue.catch(() => {}).then(saveRemote);
-      return;
-    }
-
-    if (!lastServerData || !equal(lastServerData, remote)) {
-      lastServerData = clone(remote);
-      applyingRemote = true;
-      applyData(remote);
-      saveLocal();
-      applyingRemote = false;
-      announceRemoteChange();
-    }
-  } catch (error) {
-    applyingRemote = false;
-    console.warn('Shared demo backend is unavailable; using this browser’s saved demo data.', error);
+    return await loadInFlight;
+  } finally {
+    loadInFlight = null;
   }
 };
 
@@ -219,17 +296,24 @@ export const applyServerSnapshot = (state) => {
   if (!state || !Number.isFinite(Number(state.revision)) || !state.data || typeof state.data !== 'object') {
     throw new TypeError('The server returned an invalid shared-state snapshot.');
   }
-  revision = Number(state.revision);
+  const serverRevision = Number(state.revision);
+  if (serverRevision < revision) {
+    loadRemote();
+    return;
+  }
+  const merged = mergeSharedSnapshots(lastServerData || {}, snapshot(), state.data);
+  revision = serverRevision;
   lastServerData = clone(state.data);
-  localDirty = false;
+  localDirty = !equal(merged, state.data);
   applyingRemote = true;
   try {
-    applyData(state.data);
+    applyData(merged);
     saveLocal();
     remoteChangeHandler();
   } finally {
     applyingRemote = false;
   }
+  if (localDirty) queueRemoteWrite();
 };
 
 /** Restore local data, then use Spring Boot as the shared source for all browsers. */
@@ -252,8 +336,20 @@ export async function initializeSharedData(onRemoteChange) {
   window.addEventListener('storage', (event) => {
     if (event.key !== STORAGE_KEY || !event.newValue) return;
     try {
-      applyData(JSON.parse(event.newValue));
-      remoteChangeHandler();
+      const incoming = JSON.parse(event.newValue);
+      const merged = mergeSharedSnapshots(lastServerData || {}, incoming, snapshot());
+      if (equal(merged, snapshot())) return;
+      applyingRemote = true;
+      try {
+        applyData(merged);
+        saveLocal();
+      } finally {
+        applyingRemote = false;
+      }
+      localGeneration += 1;
+      localDirty = true;
+      announceRemoteChange();
+      queueRemoteWrite();
     } catch {
       // Ignore incomplete writes from another tab.
     }
@@ -263,8 +359,7 @@ export async function initializeSharedData(onRemoteChange) {
 /** Persist every workflow change locally and, when configured, to the shared backend. */
 export function persistSharedData() {
   saveLocal();
-  if (!applyingRemote && API_BASE_URL) {
-    localDirty = true;
-    writeQueue = writeQueue.catch(() => {}).then(saveRemote);
-  }
+  if (applyingRemote) return writeQueue;
+  localGeneration += 1;
+  return queueRemoteWrite();
 }
