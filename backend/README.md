@@ -6,7 +6,7 @@
 mvn spring-boot:run
 ```
 
-The API listens on port `8080` by default. On Render, the application uses the `PORT` environment variable provided by the platform. `GET /api/health` checks availability. `GET` and `PUT /api/demo-state` support shared frontend demo state.
+The API listens on port `8080` by default. On Render, the application uses the `PORT` environment variable provided by the platform. `GET /api/health` checks availability. `GET` and `PUT /api/demo-state` support shared frontend demo state. `PUT` requires a revision envelope (`{ "revision": 12, "data": { ... } }`); stale writes receive `409` with the latest snapshot, and revisionless writes are rejected so outdated browser tabs cannot replace newer shared data. Reload clients after a frontend update so they use the revisioned sync protocol.
 
 ## Docker
 

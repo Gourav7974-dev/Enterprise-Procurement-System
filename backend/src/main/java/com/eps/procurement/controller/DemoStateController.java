@@ -31,12 +31,14 @@ public class DemoStateController {
     @PutMapping
     @ResponseStatus(HttpStatus.OK)
     public ResponseEntity<ObjectNode> write(@RequestBody JsonNode body) {
+        if (body == null || !body.isObject() || !body.has("data") || !body.has("revision")
+                || !body.path("data").isObject() || !body.path("revision").canConvertToLong()) {
+            ObjectNode error = state.read();
+            error.put("message", "Shared-state writes must include the current revision and data snapshot.");
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+        }
         try {
-            if (body != null && body.isObject() && body.has("data") && body.has("revision")) {
-                return ResponseEntity.ok(state.write(body.get("data"), body.get("revision").asLong()));
-            }
-            // Compatibility with older clients that send a bare snapshot.
-            return ResponseEntity.ok(state.write(body));
+            return ResponseEntity.ok(state.write(body.get("data"), body.get("revision").asLong()));
         } catch (DemoStateStore.RevisionConflictException conflict) {
             return ResponseEntity.status(HttpStatus.CONFLICT).body(state.read());
         }

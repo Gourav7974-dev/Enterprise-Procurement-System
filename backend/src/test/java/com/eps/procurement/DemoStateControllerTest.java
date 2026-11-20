@@ -32,16 +32,30 @@ class DemoStateControllerTest {
     }
 
     @Test
-    void acceptsAWorkflowSnapshotAndReturnsItOnTheNextRead() throws Exception {
+    void acceptsARevisionedWorkflowSnapshotAndReturnsItOnTheNextRead() throws Exception {
         mvc.perform(put("/api/demo-state")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"requests\":[{\"id\":\"REQ-DEMO-2\"}]}"))
+                        .content("{\"revision\":0,\"data\":{\"requests\":[{\"id\":\"REQ-DEMO-2\"}]}}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.revision").value(1));
 
         mvc.perform(get("/api/demo-state"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.requests[0].id").value("REQ-DEMO-2"));
+    }
+
+    @Test
+    void rejectsRevisionlessWritesWithoutChangingSharedState() throws Exception {
+        mvc.perform(put("/api/demo-state")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"requests\":[{\"id\":\"REQ-LEGACY\"}]}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").exists());
+
+        mvc.perform(get("/api/demo-state"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.revision").value(0))
+                .andExpect(jsonPath("$.data").value(org.hamcrest.Matchers.nullValue()));
     }
 
     @Test
