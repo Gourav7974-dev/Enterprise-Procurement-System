@@ -24,10 +24,15 @@ const Header = () => {
 
   const load = useCallback(async () => {
     if (!currentUser?.id) return;
-    const list = (await getNotifications(currentUser.id)) || [];
-    setUserNotifications(
-      [...list].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)),
-    );
+    try {
+      const list = await getNotifications(currentUser.id);
+      setUserNotifications(
+        [...list].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)),
+      );
+    } catch (error) {
+      console.error('Failed to load notifications:', error);
+      setUserNotifications([]);
+    }
   }, [currentUser?.id]);
 
   // Initial load + live stream (SSE against the backend, event bus in demo mode)

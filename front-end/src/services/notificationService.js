@@ -1,4 +1,5 @@
 import { apiCall, isMockMode, API_BASE_URL } from './apiConfig';
+import { readArrayResponse } from './responseData';
 import {
   getUserNotifications,
   markNotificationRead,
@@ -15,7 +16,8 @@ import {
  */
 export const getNotifications = async (userId) => {
   if (!isMockMode()) {
-    return apiCall(`/notifications?userId=${userId}`);
+    const response = await apiCall(`/notifications?userId=${encodeURIComponent(userId)}`);
+    return readArrayResponse(response, 'notifications');
   }
   return getUserNotifications(userId);
 };

@@ -1,4 +1,5 @@
 import { apiCall, isMockMode } from './apiConfig';
+import { readArrayResponse, readObjectResponse } from './responseData';
 import { rfqs as mockRfqs, quotations as mockQuotations, purchaseOrders as mockPos, suppliers as mockSuppliers } from '../data/mockData';
 import { submitQuotation as storeSubmitQuotation } from '../store/epsStore';
 
@@ -15,7 +16,21 @@ const supplierVisiblePos = (supplierId) =>
 
 export const getSupplierPortalStats = async (supplierId) => {
   if (!isMockMode()) {
-    return apiCall(`/suppliers/portal/dashboard/${supplierId}`);
+    const response = readObjectResponse(
+      await apiCall(`/suppliers/portal/dashboard/${encodeURIComponent(supplierId)}`),
+      'supplier dashboard statistics',
+    );
+    const statKeys = [
+      'pendingRfqs',
+      'submittedQuotations',
+      'purchaseOrdersReceived',
+      'activeOrders',
+      'completedOrders',
+    ];
+    if (statKeys.some((key) => !Number.isFinite(response[key]))) {
+      throw new TypeError('Invalid supplier dashboard statistics response.');
+    }
+    return response;
   }
 
   const myRfqs = mockRfqs.filter(r => r.supplierId === supplierId);
@@ -39,7 +54,12 @@ export const getSupplierRfqs = async (supplierId, statusFilter = '') => {
     const params = new URLSearchParams();
     if (supplierId) params.append('supplierId', supplierId);
     if (statusFilter) params.append('status', statusFilter);
-    return apiCall(`/rfqs?${params.toString()}`);
+    const response = await apiCall(`/rfqs?${params.toString()}`);
+    const content = readArrayResponse(response, 'supplier RFQs');
+    return {
+      content,
+      totalElements: Number.isFinite(response?.totalElements) ? response.totalElements : content.length,
+    };
   }
 
   let list = mockRfqs.filter(r => r.supplierId === supplierId);
@@ -109,7 +129,10 @@ export const submitQuotation = async (quotationData) => {
  */
 export const getSupplierQuotations = async (supplierId, statusFilter = '') => {
   if (!isMockMode()) {
-    return apiCall(`/quotations?supplierId=${supplierId}&status=${statusFilter}`);
+    const params = new URLSearchParams({ supplierId });
+    if (statusFilter) params.set('status', statusFilter);
+    const response = await apiCall(`/quotations?${params.toString()}`);
+    return readArrayResponse(response, 'supplier quotations');
   }
 
   let list = mockQuotations.filter(q => q.supplierId === supplierId);
@@ -124,7 +147,14 @@ export const getSupplierQuotations = async (supplierId, statusFilter = '') => {
  */
 export const getSupplierPurchaseOrders = async (supplierId, statusFilter = '') => {
   if (!isMockMode()) {
-    return apiCall(`/purchase-orders?supplierId=${supplierId}&status=${statusFilter}`);
+    const params = new URLSearchParams({ supplierId });
+    if (statusFilter) params.set('status', statusFilter);
+    const response = await apiCall(`/purchase-orders?${params.toString()}`);
+    const content = readArrayResponse(response, 'supplier purchase orders');
+    return {
+      content,
+      totalElements: Number.isFinite(response?.totalElements) ? response.totalElements : content.length,
+    };
   }
 
   let list = supplierVisiblePos(supplierId);
@@ -212,7 +242,8 @@ export const uploadInvoice = async (poId, invoiceData) => {
  */
 export const getSupplierProfile = async (supplierId) => {
   if (!isMockMode()) {
-    return apiCall(`/suppliers/portal/profile/${supplierId}`);
+    const response = await apiCall(`/suppliers/portal/profile/${encodeURIComponent(supplierId)}`);
+    return response == null ? null : readObjectResponse(response, 'supplier profile');
   }
 
   return mockSuppliers.find(s => s.id === supplierId);

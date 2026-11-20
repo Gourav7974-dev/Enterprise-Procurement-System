@@ -46,6 +46,7 @@ const SupplierPortal = () => {
   const [purchaseOrders, setPurchaseOrders] = useState([]);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [message, setMessage] = useState('');
 
   // Modals & Active Selections
@@ -96,20 +97,29 @@ const SupplierPortal = () => {
   // Load Data
   const loadData = async () => {
     setLoading(true);
+    setLoadError('');
     try {
-      const [sData, rData, qData, poData, pData] = await Promise.all([
+      const results = await Promise.allSettled([
         getSupplierPortalStats(supplierId),
         getSupplierRfqs(supplierId),
         getSupplierQuotations(supplierId),
         getSupplierPurchaseOrders(supplierId),
         getSupplierProfile(supplierId),
       ]);
+      const [statsResult, rfqsResult, quotationsResult, ordersResult, profileResult] = results;
+      const failures = results.flatMap((result, index) => {
+        if (result.status === 'fulfilled') return [];
+        const labels = ['dashboard statistics', 'RFQs', 'quotations', 'purchase orders', 'company profile'];
+        console.error(`Failed to load supplier ${labels[index]}:`, result.reason);
+        return [labels[index]];
+      });
 
-      if (sData) setStats(sData);
-      if (rData?.content) setRfqs(rData.content);
-      if (qData) setQuotations(qData);
-      if (poData?.content) setPurchaseOrders(poData.content);
-      if (pData) {
+      if (statsResult.status === 'fulfilled') setStats(statsResult.value);
+      if (rfqsResult.status === 'fulfilled') setRfqs(rfqsResult.value.content);
+      if (quotationsResult.status === 'fulfilled') setQuotations(quotationsResult.value);
+      if (ordersResult.status === 'fulfilled') setPurchaseOrders(ordersResult.value.content);
+      if (profileResult.status === 'fulfilled' && profileResult.value) {
+        const pData = profileResult.value;
         setProfile(pData);
         setProfileForm({
           companyName: pData.companyName || '',
@@ -122,8 +132,12 @@ const SupplierPortal = () => {
           ifsc: pData.ifsc || '',
         });
       }
+      if (failures.length) {
+        setLoadError(`Some supplier information could not be loaded (${failures.join(', ')}). Refresh the portal to retry.`);
+      }
     } catch (err) {
       console.error('Failed to load supplier portal data:', err);
+      setLoadError('Supplier information could not be loaded. Refresh the portal to retry.');
     } finally {
       setLoading(false);
     }
@@ -333,6 +347,12 @@ const SupplierPortal = () => {
           </button>
         </div>
       </div>
+
+      {loadError && (
+        <div className="card" role="alert" style={{ marginBottom: 'var(--space-xl)', borderColor: 'var(--danger, #ef4444)' }}>
+          {loadError}
+        </div>
+      )}
 
       {/* Supplier Navigation Tabs */}
       <div style={{
