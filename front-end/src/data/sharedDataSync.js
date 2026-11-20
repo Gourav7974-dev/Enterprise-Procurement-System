@@ -7,6 +7,7 @@ import {
 import { API_BASE_URL } from '../services/apiConfig';
 
 const STORAGE_KEY = 'eps_mock_snapshot';
+const LOCAL_SNAPSHOT_VERSION = 1;
 const collections = {
   users, departments, categories, requests, approvalHistory, suppliers,
   purchaseOrders, goodsReceiptNotes, softwareLicenses, payments,
@@ -126,7 +127,12 @@ const applyData = (data) => {
 const saveLocal = () => {
   if (typeof localStorage === 'undefined') return;
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot()));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      version: LOCAL_SNAPSHOT_VERSION,
+      revision,
+      serverData: clone(lastServerData),
+      data: snapshot(),
+    }));
   } catch (error) {
     console.warn('Could not save the demo data in this browser.', error);
   }
@@ -322,7 +328,21 @@ export async function initializeSharedData(onRemoteChange) {
   if (typeof localStorage === 'undefined') return;
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) applyData(JSON.parse(saved));
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (parsed?.version === LOCAL_SNAPSHOT_VERSION && parsed.data && typeof parsed.data === 'object') {
+        revision = Number(parsed.revision) || 0;
+        lastServerData = parsed.serverData && typeof parsed.serverData === 'object'
+          ? parsed.serverData
+          : null;
+        applyData(parsed.data);
+        localDirty = !!lastServerData && !equal(parsed.data, lastServerData);
+        if (localDirty) localGeneration += 1;
+      } else {
+        // Older builds stored only a bare data snapshot; keep it for offline use.
+        applyData(parsed);
+      }
+    }
   } catch {
     // Keep the seeded data when browser storage is missing or invalid.
   }
@@ -336,8 +356,14 @@ export async function initializeSharedData(onRemoteChange) {
   window.addEventListener('storage', (event) => {
     if (event.key !== STORAGE_KEY || !event.newValue) return;
     try {
-      const incoming = JSON.parse(event.newValue);
-      const merged = mergeSharedSnapshots(lastServerData || {}, incoming, snapshot());
+      const saved = JSON.parse(event.newValue);
+      const incoming = saved?.version === LOCAL_SNAPSHOT_VERSION ? saved.data : saved;
+      const incomingBase = saved?.version === LOCAL_SNAPSHOT_VERSION ? saved.serverData : null;
+      if (saved?.version === LOCAL_SNAPSHOT_VERSION && Number(saved.revision) > revision) {
+        revision = Number(saved.revision);
+        if (incomingBase && typeof incomingBase === 'object') lastServerData = incomingBase;
+      }
+      const merged = mergeSharedSnapshots(incomingBase || lastServerData || {}, incoming, snapshot());
       if (equal(merged, snapshot())) return;
       applyingRemote = true;
       try {
