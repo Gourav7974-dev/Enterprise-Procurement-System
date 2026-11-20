@@ -1,17 +1,19 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useEpsStore } from '../../store/epsStore';
 import {
-  getNotifications,
-  markAsRead,
-  markAllAsRead,
-  subscribeToNotifications,
+  getSharedNotifications,
+  markSharedAsRead,
+  markSharedAllAsRead,
+  subscribeToSharedNotifications,
 } from '../../services/notificationService';
 import { Bell, LogOut, Search, ChevronDown, Check } from 'lucide-react';
 import './Layout.css';
 
 const Header = () => {
   const { currentUser, logout } = useAuth();
+  const storeVersion = useEpsStore();
   const navigate = useNavigate();
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -25,7 +27,7 @@ const Header = () => {
   const load = useCallback(async () => {
     if (!currentUser?.id) return;
     try {
-      const list = await getNotifications(currentUser.id);
+      const list = await getSharedNotifications(currentUser.id);
       setUserNotifications(
         [...list].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)),
       );
@@ -35,18 +37,22 @@ const Header = () => {
     }
   }, [currentUser?.id]);
 
-  // Initial load + live stream (SSE against the backend, event bus in demo mode)
+  // Load from the same synchronized workflow snapshot used by all app roles.
   useEffect(() => {
     load();
+  }, [load, storeVersion]);
+
+  // The local event bus gives immediate updates; shared snapshot polling covers other browsers.
+  useEffect(() => {
     if (!currentUser?.id) return undefined;
-    const unsubscribe = subscribeToNotifications(currentUser.id, (notification) => {
+    const unsubscribe = subscribeToSharedNotifications(currentUser.id, (notification) => {
       setUserNotifications((prev) =>
         prev.some((n) => n.id === notification.id) ? prev : [notification, ...prev],
       );
       setToast(notification);
     });
     return unsubscribe;
-  }, [currentUser?.id, load]);
+  }, [currentUser?.id]);
 
   // Auto-dismiss the live toast
   useEffect(() => {
@@ -70,7 +76,7 @@ const Header = () => {
   };
 
   const handleNotifClick = async (notif) => {
-    await markAsRead(notif.id);
+    await markSharedAsRead(notif.id);
     setUserNotifications((prev) =>
       prev.map((n) => (n.id === notif.id ? { ...n, read: true } : n)),
     );
@@ -79,7 +85,7 @@ const Header = () => {
   };
 
   const handleMarkAll = async () => {
-    await markAllAsRead(currentUser.id);
+    await markSharedAllAsRead(currentUser.id);
     setUserNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
   };
 

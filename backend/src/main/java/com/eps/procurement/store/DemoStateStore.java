@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.function.UnaryOperator;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -48,10 +49,33 @@ public class DemoStateStore {
     }
 
     public synchronized ObjectNode write(JsonNode nextData) {
+        return write(nextData, null);
+    }
+
+    /** Writes a client snapshot only when it was based on the latest revision. */
+    public synchronized ObjectNode write(JsonNode nextData, Long expectedRevision) {
         if (nextData == null || !nextData.isObject()) {
             throw new IllegalArgumentException("Demo state must be a JSON object");
         }
+        if (expectedRevision != null && expectedRevision != revision) {
+            throw new RevisionConflictException();
+        }
         data = nextData.deepCopy();
+        revision++;
+        persist();
+        return read();
+    }
+
+    /** Applies one server-side workflow update atomically to the shared snapshot. */
+    public synchronized ObjectNode update(UnaryOperator<ObjectNode> mutation) {
+        ObjectNode next = data != null && data.isObject()
+                ? ((ObjectNode) data).deepCopy()
+                : mapper.createObjectNode();
+        ObjectNode updated = mutation.apply(next);
+        if (updated == null) {
+            throw new IllegalArgumentException("Demo state update returned no data");
+        }
+        data = updated;
         revision++;
         persist();
         return read();
@@ -75,5 +99,9 @@ public class DemoStateStore {
         } catch (IOException e) {
             throw new IllegalStateException("Could not save demo state to " + stateFile, e);
         }
+    }
+
+    public static final class RevisionConflictException extends RuntimeException {
+        private static final long serialVersionUID = 1L;
     }
 }

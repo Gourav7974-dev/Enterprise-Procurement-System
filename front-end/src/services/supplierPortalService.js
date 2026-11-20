@@ -1,7 +1,22 @@
-import { apiCall, isMockMode } from './apiConfig';
+import { apiCall, isMockMode, API_BASE_URL } from './apiConfig';
 import { readArrayResponse, readObjectResponse } from './responseData';
-import { rfqs as mockRfqs, quotations as mockQuotations, purchaseOrders as mockPos, suppliers as mockSuppliers } from '../data/mockData';
-import { submitQuotation as storeSubmitQuotation } from '../store/epsStore';
+import {
+  rfqs as mockRfqs,
+  quotations as mockQuotations,
+  purchaseOrders as mockPos,
+  suppliers as mockSuppliers,
+  payments as mockPayments,
+} from '../data/mockData';
+import {
+  acceptSupplierPurchaseOrder,
+  declineSupplierRfq,
+  submitQuotation as storeSubmitQuotation,
+  updateRfqAvailability as storeUpdateRfqAvailability,
+  updateSupplierCompanyProfile,
+  updateSupplierPurchaseOrderStatus,
+  rejectSupplierPurchaseOrder,
+} from '../store/epsStore';
+import { applyServerSnapshot } from '../data/sharedDataSync';
 
 /**
  * GET /suppliers/portal/dashboard/:supplierId
@@ -267,3 +282,93 @@ export const updateSupplierProfile = async (supplierId, profileData) => {
   }
   return null;
 };
+
+// The deployed UI uses the shared snapshot for workflows across roles. The
+// legacy endpoint helpers above remain available for integrations that use
+// the seeded REST collections, but must not be mixed into this shared workflow.
+export const getSharedSupplierPortalStats = (supplierId) => {
+  const myRfqs = mockRfqs.filter((rfq) => rfq.supplierId === supplierId);
+  const myQuotes = mockQuotations.filter((quote) => quote.supplierId === supplierId);
+  const myPos = supplierVisiblePos(supplierId);
+  return {
+    pendingRfqs: myRfqs.filter((rfq) => rfq.status === 'pending').length,
+    submittedQuotations: myQuotes.length,
+    purchaseOrdersReceived: myPos.length,
+    activeOrders: myPos.filter((po) => ['sent', 'accepted', 'in_transit'].includes(po.status)).length,
+    completedOrders: myPos.filter((po) => ['delivered', 'closed'].includes(po.status)).length,
+  };
+};
+
+export const getSharedSupplierRfqs = (supplierId, statusFilter = '') => {
+  const content = mockRfqs.filter((rfq) => rfq.supplierId === supplierId
+    && (!statusFilter || rfq.status === statusFilter));
+  return { content, totalElements: content.length };
+};
+
+export const getSharedSupplierQuotations = (supplierId, statusFilter = '') =>
+  mockQuotations.filter((quote) => quote.supplierId === supplierId
+    && (!statusFilter || quote.status === statusFilter));
+
+export const getSharedSupplierPurchaseOrders = (supplierId, statusFilter = '') => {
+  const content = supplierVisiblePos(supplierId)
+    .filter((po) => !statusFilter || po.status === statusFilter);
+  return { content, totalElements: content.length };
+};
+
+export const getSharedSupplierPayments = (supplierId) => {
+  const supplierName = mockSuppliers.find((supplier) => supplier.id === supplierId)?.companyName;
+  return mockPayments
+    .filter((payment) => payment.supplierId === supplierId
+      || (supplierName && payment.supplierName === supplierName))
+    .sort((a, b) => new Date(b.createdAt || b.paidDate || 0) - new Date(a.createdAt || a.paidDate || 0));
+};
+
+export const updateSharedProductAvailability = (rfqId, availability, user) =>
+  storeUpdateRfqAvailability(rfqId, availability, user);
+
+export const declineSharedRfq = (rfqId, reason, remarks, user) =>
+  declineSupplierRfq(rfqId, reason, remarks, user);
+
+export const submitSharedQuotation = (quotation, user) => storeSubmitQuotation(quotation, user);
+
+export const acceptSharedPurchaseOrder = (poId, user) => acceptSupplierPurchaseOrder(poId, user);
+
+export const rejectSharedPurchaseOrder = (poId, reason, user) =>
+  rejectSupplierPurchaseOrder(poId, reason, user);
+
+export const updateSharedOrderStatus = (poId, status, user) =>
+  updateSupplierPurchaseOrderStatus(poId, status, user);
+
+export const getSharedSupplierProfile = (supplierId) =>
+  mockSuppliers.find((supplier) => supplier.id === supplierId) || null;
+
+export const updateSharedSupplierProfile = (supplierId, profile, user) =>
+  updateSupplierCompanyProfile(supplierId, profile, user);
+
+/** Uploads the actual PDF and atomically updates the shared PO, payment and finance notification. */
+export const uploadSharedInvoice = async (poId, invoiceData) => {
+  if (!API_BASE_URL) {
+    throw new Error('Invoice file upload needs the configured Spring Boot backend.');
+  }
+  const form = new FormData();
+  form.set('supplierId', invoiceData.supplierId);
+  form.set('invoiceNumber', invoiceData.invoiceNumber);
+  form.set('invoiceAmount', String(invoiceData.invoiceAmount));
+  form.set('invoiceDate', invoiceData.invoiceDate);
+  form.set('file', invoiceData.file, invoiceData.file.name);
+  const token = localStorage.getItem('eps_token');
+  const response = await fetch(`${API_BASE_URL}/demo-state/invoices/${encodeURIComponent(poId)}`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: form,
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.message || `Invoice upload failed (HTTP ${response.status}).`);
+  applyServerSnapshot(result);
+  return result.data.purchaseOrders.find((po) => po.id === poId);
+};
+
+export const sharedInvoiceFileUrl = (fileId) =>
+  fileId && API_BASE_URL
+    ? `${API_BASE_URL}/demo-state/invoices/${encodeURIComponent(fileId)}`
+    : null;

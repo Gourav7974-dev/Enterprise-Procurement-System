@@ -52,7 +52,7 @@ function App() {
             <Route path="dashboard" element={<DashboardRouter />} />
             
             {/* Supplier Portal */}
-            <Route path="supplier-portal" element={<SupplierPortal />} />
+            <Route path="supplier-portal" element={<SupplierPortal mode="workspace" />} />
             
             {/* Requests */}
             <Route path="requests" element={<RequestList />} />

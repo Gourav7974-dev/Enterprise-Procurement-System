@@ -43,4 +43,18 @@ class DemoStateControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.requests[0].id").value("REQ-DEMO-2"));
     }
+
+    @Test
+    void returnsConflictWhenAStaleBrowserTriesToReplaceNewerSharedState() throws Exception {
+        mvc.perform(put("/api/demo-state")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"revision\":0,\"data\":{\"requests\":[{\"id\":\"REQ-NEW\"}]}}"))
+                .andExpect(status().isOk());
+
+        mvc.perform(put("/api/demo-state")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"revision\":0,\"data\":{\"requests\":[{\"id\":\"REQ-STALE\"}]}}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.data.requests[0].id").value("REQ-NEW"));
+    }
 }

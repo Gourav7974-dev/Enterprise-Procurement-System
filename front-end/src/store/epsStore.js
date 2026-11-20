@@ -95,8 +95,10 @@ export const subscribeNotifications = (listener) => {
   return () => notificationListeners.delete(listener);
 };
 
-const nextId = (prefix, list, pad = 3) =>
-  `${prefix}${String(list.length + 1).padStart(pad, '0')}`;
+// IDs include a random component so two browser sessions creating records at
+// the same time do not overwrite each other during shared-state reconciliation.
+const nextId = (prefix) =>
+  `${prefix}${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
 
 export const pushNotification = ({ userId, type, title, message, link }) => {
   if (!userId) return null;
@@ -148,6 +150,12 @@ export const markAllNotificationsRead = (userId) => {
   emitChange();
 };
 
+const assertSupplierOwns = (supplierId, user) => {
+  if (user?.role !== 'supplier' || !supplierId || user.supplierId !== supplierId) {
+    throw new Error('This action is only available to the supplier assigned to this record.');
+  }
+};
+
 // ── Audit trail ──────────────────────────────────────────────
 /**
  * Every state change in the system is recorded here. The trail is
@@ -164,7 +172,7 @@ export const recordAudit = ({
   remarks = '',
 }) => {
   const entry = {
-    id: `AL${String(auditLogs.length + 1).padStart(3, '0')}`,
+    id: nextId('AL'),
     userId: user?.id || 'SYSTEM',
     userName: user?.name || 'System',
     role: user?.role || 'system',
@@ -263,7 +271,7 @@ export const createRequest = (data, user, { submit = false } = {}) => {
   if (categoryError) throw new Error(categoryError);
 
   const request = {
-    id: `REQ-2024-${String(requests.length + 1).padStart(3, '0')}`,
+    id: nextId(`REQ-${new Date().getFullYear()}-`),
     status: 'draft',
     priority: 'medium',
     ...data,
@@ -529,12 +537,23 @@ export const createRfqs = (requestId, supplierIds, options = {}) => {
   // Only the designated department team (or central procurement) may source.
   if (options.user) assertCanProcessCategory(options.user.role, request.category);
   if (!supplierIds?.length) throw new Error('Select at least one supplier.');
+  if (new Set(supplierIds).size !== supplierIds.length) throw new Error('Each supplier can only be selected once.');
+  supplierIds.forEach((supplierId) => {
+    if (!suppliers.some((supplier) => supplier.id === supplierId)) {
+      throw new Error(`Supplier ${supplierId} was not found.`);
+    }
+  });
+  const duplicateSupplier = supplierIds.find((supplierId) =>
+    rfqs.some((rfq) => rfq.requestId === requestId && rfq.supplierId === supplierId));
+  if (duplicateSupplier) throw new Error(`Supplier ${duplicateSupplier} has already received an RFQ for this request.`);
 
   const created = supplierIds.map((supplierId) => {
     const supplier = suppliers.find((s) => s.id === supplierId);
+    if (!supplier) throw new Error(`Supplier ${supplierId} was not found.`);
+    const rfqId = nextId(`RFQ-${new Date().getFullYear()}-`);
     const rfq = {
-      id: `RFQ-2024-${String(rfqs.length + 1).padStart(3, '0')}`,
-      rfqNumber: `RFQ-2024-${String(rfqs.length + 1).padStart(3, '0')}`,
+      id: rfqId,
+      rfqNumber: rfqId,
       requestId,
       supplierId,
       supplierName: supplier?.companyName || supplierId,
@@ -584,11 +603,69 @@ export const createRfqs = (requestId, supplierIds, options = {}) => {
   return created;
 };
 
+/** Supplier updates availability on an RFQ assigned to its account. */
+export const updateRfqAvailability = (rfqId, availability, user) => {
+  const rfq = rfqs.find((record) => record.id === rfqId);
+  if (!rfq) throw new Error('RFQ not found.');
+  assertSupplierOwns(rfq.supplierId, user);
+  if (rfq.status !== 'pending') throw new Error('Only pending RFQs can be updated.');
+  if (!['Available', 'Out of Stock', 'Pending Check'].includes(availability)) {
+    throw new Error('Select a valid availability status.');
+  }
+  rfq.productAvailability = availability;
+  recordAudit({
+    user,
+    action: 'UPDATE_RFQ_AVAILABILITY',
+    entity: 'Rfq',
+    entityId: rfq.id,
+    updatedValue: availability,
+    remarks: `${rfq.supplierName} updated product availability.`,
+  });
+  emitChange();
+  return rfq;
+};
+
+/** Supplier declines an RFQ assigned to its account. */
+export const declineSupplierRfq = (rfqId, reason, remarks, user) => {
+  const rfq = rfqs.find((record) => record.id === rfqId);
+  if (!rfq) throw new Error('RFQ not found.');
+  assertSupplierOwns(rfq.supplierId, user);
+  if (rfq.status !== 'pending') throw new Error('Only pending RFQs can be declined.');
+  if (!reason?.trim()) throw new Error('Provide a decline reason.');
+  const previous = rfq.status;
+  rfq.status = 'declined';
+  rfq.productAvailability = 'Out of Stock';
+  rfq.declineReason = reason.trim();
+  rfq.declineRemarks = remarks?.trim() || '';
+  recordAudit({
+    user,
+    action: 'DECLINE_RFQ',
+    entity: 'Rfq',
+    entityId: rfq.id,
+    previousValue: previous,
+    updatedValue: 'declined',
+    remarks: rfq.declineRemarks || rfq.declineReason,
+  });
+  pushToRoles(['procurement_officer'], {
+    type: 'rfq_declined',
+    title: 'Supplier Declined RFQ',
+    message: `${rfq.supplierName} declined ${rfq.rfqNumber}: ${rfq.declineReason}.`,
+    link: `/procurement/vendor-selection/${rfq.requestId}`,
+  });
+  emitChange();
+  return rfq;
+};
+
 // ── Procurement: quotations ──────────────────────────────────
 /** Supplier submits a quotation against an RFQ. Finance review comes next. */
-export const submitQuotation = (data) => {
+export const submitQuotation = (data, user) => {
   const rfq = rfqs.find((r) => r.id === data.rfqId);
   const supplier = suppliers.find((s) => s.id === data.supplierId);
+  if (data.rfqId && !rfq) throw new Error('The selected RFQ could not be found. Refresh the Supplier Workspace and try again.');
+  if (rfq && rfq.supplierId !== data.supplierId) throw new Error('This RFQ is assigned to another supplier.');
+  if (rfq && rfq.status !== 'pending') throw new Error('This RFQ has already been answered.');
+  if (!supplier) throw new Error('Supplier account could not be verified.');
+  if (user) assertSupplierOwns(data.supplierId, user);
   const items = data.items?.length ? data.items : [];
   const quantity = items[0]?.quantity || rfq?.quantity || 1;
   const unitPrice = Number(data.unitPrice) || items[0]?.unitPrice || 0;
@@ -737,7 +814,7 @@ export const selectVendor = (quotationId, user, options = {}) => {
   const subtotal = items.reduce((sum, i) => sum + i.total, 0);
   const tax = Math.round(subtotal * 0.18);
   const po = {
-    id: `PO-2024-${String(purchaseOrders.length + 1).padStart(3, '0')}`,
+    id: nextId(`PO-${new Date().getFullYear()}-`),
     requestId: request.id,
     supplierId: winner.supplierId,
     supplierName: winner.supplierName,
@@ -1028,6 +1105,127 @@ export const processPurchaseOrder = (poId, nextStatus, user, remarks = '') => {
   return po;
 };
 
+/** Supplier acknowledgement of an issued PO. */
+export const acceptSupplierPurchaseOrder = (poId, user) => {
+  const po = getPurchaseOrder(poId);
+  if (!po) throw new Error('Purchase order not found.');
+  assertSupplierOwns(po.supplierId, user);
+  if (po.status !== 'sent') throw new Error('Only an issued purchase order can be accepted.');
+  return updateSupplierPurchaseOrder(po, 'accepted', user, 'Supplier acknowledged the purchase order.');
+};
+
+/** Supplier declines an issued PO and notifies procurement/request owner. */
+export const rejectSupplierPurchaseOrder = (poId, reason, user) => {
+  const po = getPurchaseOrder(poId);
+  if (!po) throw new Error('Purchase order not found.');
+  assertSupplierOwns(po.supplierId, user);
+  if (po.status !== 'sent') throw new Error('Only an issued purchase order can be rejected.');
+  if (!reason?.trim()) throw new Error('Provide a reason for rejecting the order.');
+  po.reclineReason = reason.trim();
+  updateSupplierPurchaseOrder(po, 'rejected', user, reason.trim());
+  pushToRoles(['procurement_officer', poOwnerTeam(po)], {
+    type: 'po_rejected',
+    title: 'Supplier Rejected Purchase Order',
+    message: `${po.supplierName} rejected ${po.id}: ${reason.trim()}`,
+    link: `/purchase-orders/${po.id}`,
+  });
+  return po;
+};
+
+/** Supplier fulfillment follows the same accepted -> in_transit -> delivered states as procurement. */
+export const updateSupplierPurchaseOrderStatus = (poId, nextStatus, user) => {
+  const po = getPurchaseOrder(poId);
+  if (!po) throw new Error('Purchase order not found.');
+  assertSupplierOwns(po.supplierId, user);
+  const allowed = { accepted: ['in_transit'], in_transit: ['delivered'] };
+  if (!allowed[po.status]?.includes(nextStatus)) {
+    throw new Error(`The order cannot move from ${po.status} to ${nextStatus}.`);
+  }
+  return updateSupplierPurchaseOrder(po, nextStatus, user, PO_STAGE_MESSAGES[nextStatus]);
+};
+
+const updateSupplierPurchaseOrder = (po, nextStatus, user, remarks) => {
+  const previous = po.status;
+  po.status = nextStatus;
+  po.updatedAt = stamp();
+  po.history = [
+    ...(po.history || []),
+    { status: nextStatus, by: user.name, role: user.role, at: stamp(), remarks },
+  ];
+  const request = po.requestId ? getRequest(po.requestId) : null;
+  if (request) {
+    request.procurementStage = nextStatus === 'rejected' ? 'supplier_rejected'
+      : nextStatus === 'in_transit' ? 'in_transit'
+      : nextStatus === 'delivered' ? 'delivered' : 'po_accepted';
+    if (nextStatus === 'delivered') request.status = 'delivered';
+    request.updatedAt = stamp();
+  }
+  recordAudit({
+    user,
+    action: `SUPPLIER_PO_${nextStatus.toUpperCase()}`,
+    entity: 'PurchaseOrder',
+    entityId: po.id,
+    previousValue: previous,
+    updatedValue: nextStatus,
+    remarks,
+  });
+
+  if (nextStatus === 'delivered') {
+    ensurePaymentForPo(po, user);
+    pushToRoles(['finance_officer'], {
+      type: 'delivery_submitted',
+      title: 'Delivery Reported by Supplier',
+      message: `${po.id} from ${po.supplierName} has been marked delivered and is ready for receipt and invoice matching.`,
+      link: '/finance/payments',
+    });
+  } else {
+    pushToRoles(['procurement_officer', poOwnerTeam(po)], {
+      type: `po_${nextStatus}`,
+      title: nextStatus === 'accepted' ? 'Supplier Accepted Purchase Order' : 'Supplier Dispatched Order',
+      message: `${po.supplierName} marked ${po.id} as ${nextStatus.replace('_', ' ')}.`,
+      link: `/purchase-orders/${po.id}`,
+    });
+  }
+  if (request?.createdBy) {
+    pushNotification({
+      userId: request.createdBy,
+      type: `po_${nextStatus}`,
+      title: `Order Update — ${po.id}`,
+      message: `${po.supplierName} marked your request ${request.id} as ${nextStatus.replace('_', ' ')}.`,
+      link: `/requests/${request.id}`,
+    });
+  }
+  emitChange();
+  return po;
+};
+
+/** Update supplier-owned company details in the shared demo snapshot. */
+export const updateSupplierCompanyProfile = (supplierId, profile, user) => {
+  assertSupplierOwns(supplierId, user);
+  const supplier = suppliers.find((entry) => entry.id === supplierId);
+  if (!supplier) throw new Error('Supplier profile not found.');
+  const allowedFields = ['companyName', 'contactPerson', 'email', 'phone', 'address', 'bankName', 'accountNumber', 'ifsc'];
+  const previousName = supplier.companyName;
+  for (const field of allowedFields) {
+    if (Object.prototype.hasOwnProperty.call(profile, field)) supplier[field] = profile[field];
+  }
+  if (previousName !== supplier.companyName) {
+    purchaseOrders.filter((po) => po.supplierId === supplierId).forEach((po) => { po.supplierName = supplier.companyName; });
+    rfqs.filter((rfq) => rfq.supplierId === supplierId).forEach((rfq) => { rfq.supplierName = supplier.companyName; });
+    quotations.filter((quote) => quote.supplierId === supplierId).forEach((quote) => { quote.supplierName = supplier.companyName; });
+    payments.filter((payment) => payment.supplierId === supplierId).forEach((payment) => { payment.supplierName = supplier.companyName; });
+  }
+  recordAudit({
+    user,
+    action: 'UPDATE_SUPPLIER_PROFILE',
+    entity: 'Supplier',
+    entityId: supplierId,
+    remarks: 'Supplier updated company profile details.',
+  });
+  emitChange();
+  return supplier;
+};
+
 /** Progress view of a PO for the timeline UI. */
 export const poProgress = (po) => {
   const index = PO_STAGE_ORDER.indexOf(po?.status);
@@ -1280,6 +1478,11 @@ const addPaymentHistory = (payment, user, status, remarks) => {
   ];
 };
 
+const syncInvoiceStatusToOrder = (payment, status) => {
+  const po = getPurchaseOrder(payment.poNumber || payment.poId);
+  if (po) po.invoiceStatus = status;
+};
+
 const supplierIdFor = (name) => suppliers.find((s) => s.companyName === name)?.id;
 
 /** Raise a payment for a delivered purchase order (idempotent). */
@@ -1294,8 +1497,12 @@ export const ensurePaymentForPo = (po, user) => {
     requestId: po.requestId || null,
     supplierId: po.supplierId || supplierIdFor(po.supplierName),
     supplierName: po.supplierName,
-    invoiceNumber: `INV-${String(po.id).replace(/[^0-9]/g, '') || payments.length + 1}`,
-    amount: po.totalAmount || 0,
+    invoiceNumber: po.invoiceNumber || `INV-${String(po.id).replace(/[^0-9]/g, '') || payments.length + 1}`,
+    invoiceDate: po.invoiceDate || null,
+    invoiceFileId: po.invoiceFileId || null,
+    invoiceFileName: po.invoiceFileName || null,
+    invoiceUploadedAt: po.invoiceUploadedAt || null,
+    amount: po.invoiceAmount || po.totalAmount || 0,
     paymentMethod: null,
     referenceNumber: null,
     status: 'pending',
@@ -1356,6 +1563,7 @@ export const verifyInvoice = (paymentId, { checks = {}, remarks = '', user }) =>
   payment.verifiedByName = user?.name || null;
   payment.verifiedAt = stamp();
   payment.remarks = remarks || payment.remarks;
+  syncInvoiceStatusToOrder(payment, 'verified');
   addPaymentHistory(payment, user, 'verified', remarks || 'Three-way match passed.');
   recordAudit({
     user,
@@ -1366,6 +1574,14 @@ export const verifyInvoice = (paymentId, { checks = {}, remarks = '', user }) =>
     updatedValue: 'verified',
     remarks: remarks || `Invoice ${payment.invoiceNumber || ''} verified against ${payment.poNumber}.`.trim(),
   });
+  if (payment.supplierId) {
+    pushToSupplier(payment.supplierId, {
+      type: 'invoice_verified',
+      title: 'Invoice Verified',
+      message: `Invoice ${payment.invoiceNumber || ''} for ${payment.poNumber} passed finance verification.`,
+      link: '/supplier-portal',
+    });
+  }
   emitChange();
   return payment;
 };
@@ -1384,6 +1600,7 @@ export const releasePayment = (paymentId, { paymentMethod, referenceNumber, rema
   if (!paymentMethod) throw new Error('Select a payment method');
   const previous = payment.status;
   payment.status = 'processing';
+  syncInvoiceStatusToOrder(payment, 'processing');
   payment.paymentMethod = paymentMethod;
   payment.referenceNumber =
     referenceNumber ||
@@ -1422,6 +1639,7 @@ export const confirmPayment = (paymentId, { transactionId, remarks = '', user })
   }
   const previous = payment.status;
   payment.status = 'paid';
+  syncInvoiceStatusToOrder(payment, 'paid');
   payment.transactionId = transactionId || `TXN-${Date.now()}`;
   payment.paidDate = stamp().split('T')[0];
   addPaymentHistory(payment, user, 'paid', remarks || 'Settlement confirmed.');
@@ -1462,6 +1680,8 @@ export const updatePaymentStatus = (paymentId, nextStatus, { remarks = '', user 
   }
   const previous = payment.status;
   payment.status = nextStatus;
+  payment.remarks = remarks || payment.remarks;
+  syncInvoiceStatusToOrder(payment, nextStatus);
   addPaymentHistory(payment, user, nextStatus, remarks);
   recordAudit({
     user,
@@ -1472,6 +1692,15 @@ export const updatePaymentStatus = (paymentId, nextStatus, { remarks = '', user 
     updatedValue: nextStatus,
     remarks: remarks || `Payment moved to ${nextStatus.replace(/_/g, ' ')}.`,
   });
+  if (payment.supplierId && ['on_hold', 'failed', 'pending'].includes(nextStatus)) {
+    const notices = {
+      on_hold: ['invoice_on_hold', 'Invoice Needs Attention', `Invoice ${payment.invoiceNumber || ''} for ${payment.poNumber} is on hold. ${remarks || ''}`.trim()],
+      failed: ['payment_failed', 'Payment Failed', `Payment for ${payment.poNumber} could not be completed. ${remarks || ''}`.trim()],
+      pending: ['invoice_reopened', 'Invoice Reopened', `Invoice ${payment.invoiceNumber || ''} for ${payment.poNumber} is back in review. ${remarks || ''}`.trim()],
+    };
+    const [type, title, message] = notices[nextStatus];
+    pushToSupplier(payment.supplierId, { type, title, message, link: '/supplier-portal' });
+  }
   emitChange();
   return payment;
 };

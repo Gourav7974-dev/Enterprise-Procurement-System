@@ -8,6 +8,10 @@ import { describe, it, expect } from 'vitest';
 import * as store from '../epsStore';
 import { validateItemCategory, canProcessCategory } from '../procurementPolicy';
 import { normalizeSharedSnapshot } from '../../data/sharedDataSync';
+import {
+  getSharedSupplierQuotations,
+  getSharedSupplierRfqs,
+} from '../../services/supplierPortalService';
 
 describe('approval amount routing', () => {
   it('uses the requested manager, senior manager, and head thresholds', () => {
@@ -132,6 +136,39 @@ describe('full procurement lifecycle', () => {
     expect(canProcessCategory('facilities_team', 'Facilities')).toBe(true);
     expect(canProcessCategory('facilities_team', 'Equipment & Assets')).toBe(false);
     expect(canProcessCategory('procurement_officer', 'Facilities')).toBe(true);
+  });
+});
+
+describe('supplier shared workflow', () => {
+  it('delivers an assigned RFQ, routes its quote back, and records supplier order updates', () => {
+    const procurement = { id: 'U006', name: 'Deepa Nair', role: 'procurement_officer' };
+    const supplier = { id: 'U014', name: 'Neha Deshmukh', role: 'supplier', supplierId: 'S002' };
+    const rfq = store.createRfqs('REQ-2024-011', ['S002'], { user: procurement })[0];
+
+    expect(getSharedSupplierRfqs('S002').content).toContainEqual(expect.objectContaining({
+      id: rfq.id, supplierId: 'S002', status: 'pending',
+    }));
+    expect(store.getUserNotifications(supplier.id).some((n) => n.type === 'rfq_received')).toBe(true);
+
+    const quote = store.submitQuotation({
+      rfqId: rfq.id,
+      requestId: rfq.requestId,
+      supplierId: 'S002',
+      unitPrice: 12000,
+      items: [{ name: rfq.itemName, quantity: rfq.quantity, unitPrice: 12000 }],
+    }, supplier);
+    expect(getSharedSupplierQuotations('S002')).toContainEqual(expect.objectContaining({ id: quote.id }));
+    expect(store.getUserNotifications('U006').some((n) => n.type === 'quotation_submitted')).toBe(true);
+    store.reviewQuotation(quote.id, { approve: true, user: finance });
+    const { purchaseOrder } = store.selectVendor(quote.id, procurement);
+    store.reviewPurchaseOrder(purchaseOrder.id, { approve: true, user: finance });
+    store.issuePurchaseOrderToSupplier(purchaseOrder.id, procurement);
+
+    expect(store.acceptSupplierPurchaseOrder(purchaseOrder.id, supplier).status).toBe('accepted');
+    expect(store.updateSupplierPurchaseOrderStatus(purchaseOrder.id, 'in_transit', supplier).status).toBe('in_transit');
+    expect(store.updateSupplierPurchaseOrderStatus(purchaseOrder.id, 'delivered', supplier).status).toBe('delivered');
+    expect(store.getPayments({ search: purchaseOrder.id }).some((p) => p.status === 'pending')).toBe(true);
+    expect(store.getUserNotifications('U010').some((n) => n.type === 'invoice_pending')).toBe(true);
   });
 });
 

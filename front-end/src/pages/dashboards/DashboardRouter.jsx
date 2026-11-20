@@ -11,6 +11,8 @@ import SupplierPortal from '../suppliers/SupplierPortal';
 const DashboardRouter = () => {
   const { currentUser } = useAuth();
 
+  if (currentUser?.role === 'supplier') return <SupplierPortal mode="overview" />;
+
   const dashboardMap = {
     employee: EmployeeDashboard,
     manager: ManagerDashboard,
@@ -21,7 +23,6 @@ const DashboardRouter = () => {
     software_team: ProcurementDashboard,
     facilities_team: ProcurementDashboard,
     finance_officer: FinanceDashboard,
-    supplier: SupplierPortal,
     admin: AdminDashboard,
   };
 

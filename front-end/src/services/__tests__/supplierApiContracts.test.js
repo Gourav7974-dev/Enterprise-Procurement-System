@@ -11,7 +11,15 @@ vi.mock('../apiConfig', () => ({
   isMockMode,
 }));
 
-vi.mock('../../store/epsStore', () => ({ submitQuotation: vi.fn() }));
+vi.mock('../../store/epsStore', () => ({
+  acceptSupplierPurchaseOrder: vi.fn(),
+  declineSupplierRfq: vi.fn(),
+  submitQuotation: vi.fn(),
+  updateRfqAvailability: vi.fn(),
+  updateSupplierCompanyProfile: vi.fn(),
+  updateSupplierPurchaseOrderStatus: vi.fn(),
+  rejectSupplierPurchaseOrder: vi.fn(),
+}));
 
 import {
   getSupplierPurchaseOrders,

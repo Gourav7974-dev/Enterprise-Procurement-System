@@ -6,6 +6,7 @@ import {
   useEpsStore, getPayments, verifyInvoice, canProcessPayments,
 } from '../../store/epsStore';
 import { CheckCircle, FileCheck, Shield, ShieldAlert } from 'lucide-react';
+import { sharedInvoiceFileUrl } from '../../services/supplierPortalService';
 
 const CHECKS = [
   { key: 'poVerified', label: 'PO Verified' },
@@ -82,6 +83,12 @@ const InvoiceVerification = () => {
                     <p style={{ fontSize: 'var(--font-sm)', color: 'var(--text-secondary)', marginTop: 4 }}>
                       {p.supplierName} • PO: {p.poNumber} • Invoice: {p.invoiceNumber || '—'}
                     </p>
+                    {p.invoiceFileId && sharedInvoiceFileUrl(p.invoiceFileId) && (
+                      <a href={sharedInvoiceFileUrl(p.invoiceFileId)} target="_blank" rel="noreferrer"
+                        style={{ display: 'inline-block', marginTop: 6, fontSize: 'var(--font-sm)' }}>
+                        View uploaded invoice PDF
+                      </a>
+                    )}
                   </div>
                   <div style={{ fontSize: 'var(--font-xl)', fontWeight: 700, color: 'var(--text-primary)' }}>{formatCurrency(p.amount)}</div>
                 </div>

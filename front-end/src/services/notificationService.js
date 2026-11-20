@@ -90,3 +90,25 @@ export const subscribeToNotifications = (userId, onNotification) => {
     source?.close();
   };
 };
+
+// All app screens write workflow events to the shared snapshot. These helpers
+// keep the header on that same source instead of reading the backend's separate
+// process-local seeded notification list.
+export const getSharedNotifications = (userId) => getUserNotifications(userId);
+
+export const markSharedAsRead = (id) => {
+  markNotificationRead(id);
+  return { message: 'Marked as read' };
+};
+
+export const markSharedAllAsRead = (userId) => {
+  markAllNotificationsRead(userId);
+  return { message: 'All notifications marked as read' };
+};
+
+export const subscribeToSharedNotifications = (userId, onNotification) => {
+  if (!userId || typeof onNotification !== 'function') return () => {};
+  return subscribeMockNotifications((notification) => {
+    if (notification.userId === userId) onNotification(notification);
+  });
+};

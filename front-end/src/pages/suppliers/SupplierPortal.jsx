@@ -1,36 +1,41 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   Building2, FileText, CheckCircle, Package, Clock, XCircle,
   Truck, Upload, ShieldCheck, DollarSign, AlertTriangle, Eye,
   Check, ArrowRight, RefreshCw, Star, Info, FileCode, CheckSquare,
-  ChevronRight, Calendar, MapPin, Tag, Award
+  ChevronRight, Calendar, MapPin, Tag, Award, CreditCard
 } from 'lucide-react';
 import {
-  getSupplierPortalStats,
-  getSupplierRfqs,
-  updateProductAvailability,
-  declineRfq,
-  submitQuotation,
-  getSupplierQuotations,
-  getSupplierPurchaseOrders,
-  acceptPurchaseOrder,
-  rejectPurchaseOrder,
-  updateOrderStatus,
-  uploadInvoice,
-  getSupplierProfile,
-  updateSupplierProfile
+  getSharedSupplierPortalStats,
+  getSharedSupplierRfqs,
+  getSharedSupplierQuotations,
+  getSharedSupplierPurchaseOrders,
+  getSharedSupplierPayments,
+  updateSharedProductAvailability,
+  declineSharedRfq,
+  submitSharedQuotation,
+  acceptSharedPurchaseOrder,
+  rejectSharedPurchaseOrder,
+  updateSharedOrderStatus,
+  uploadSharedInvoice,
+  getSharedSupplierProfile,
+  updateSharedSupplierProfile,
+  sharedInvoiceFileUrl,
 } from '../../services/supplierPortalService';
 import { formatCurrency, getStatusBadgeClass, getStatusLabel } from '../../data/mockData';
 import { useEpsStore } from '../../store/epsStore';
 
-const SupplierPortal = () => {
-  useEpsStore();
+const SupplierPortal = ({ mode = 'workspace' }) => {
+  const storeVersion = useEpsStore();
   const { currentUser } = useAuth();
-  const supplierId = currentUser?.supplierId || 'S001'; // Default to TechnoHub for demo
+  const navigate = useNavigate();
+  const location = useLocation();
+  const supplierId = currentUser?.supplierId;
 
   // Active Tab
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [activeTab, setActiveTab] = useState(mode === 'workspace' ? (location.state?.tab || 'rfqs') : 'dashboard');
 
   // Stats & Data State
   const [stats, setStats] = useState({
@@ -44,10 +49,12 @@ const SupplierPortal = () => {
   const [rfqs, setRfqs] = useState([]);
   const [quotations, setQuotations] = useState([]);
   const [purchaseOrders, setPurchaseOrders] = useState([]);
+  const [payments, setPayments] = useState([]);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [message, setMessage] = useState('');
+  const [messageType, setMessageType] = useState('success');
 
   // Modals & Active Selections
   const [selectedRfq, setSelectedRfq] = useState(null);
@@ -75,8 +82,9 @@ const SupplierPortal = () => {
   const [invoiceForm, setInvoiceForm] = useState({
     invoiceNumber: '',
     invoiceAmount: '',
+    invoiceDate: new Date().toISOString().slice(0, 10),
+    file: null,
     fileName: '',
-    fileUploaded: false,
   });
 
   const [profileForm, setProfileForm] = useState({
@@ -95,21 +103,22 @@ const SupplierPortal = () => {
   const [rfqFilter, setRfqFilter] = useState('all');
 
   // Load Data
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     setLoadError('');
     try {
       const results = await Promise.allSettled([
-        getSupplierPortalStats(supplierId),
-        getSupplierRfqs(supplierId),
-        getSupplierQuotations(supplierId),
-        getSupplierPurchaseOrders(supplierId),
-        getSupplierProfile(supplierId),
+        Promise.resolve(getSharedSupplierPortalStats(supplierId)),
+        Promise.resolve(getSharedSupplierRfqs(supplierId)),
+        Promise.resolve(getSharedSupplierQuotations(supplierId)),
+        Promise.resolve(getSharedSupplierPurchaseOrders(supplierId)),
+        Promise.resolve(getSharedSupplierPayments(supplierId)),
+        Promise.resolve(getSharedSupplierProfile(supplierId)),
       ]);
-      const [statsResult, rfqsResult, quotationsResult, ordersResult, profileResult] = results;
+      const [statsResult, rfqsResult, quotationsResult, ordersResult, paymentsResult, profileResult] = results;
       const failures = results.flatMap((result, index) => {
         if (result.status === 'fulfilled') return [];
-        const labels = ['dashboard statistics', 'RFQs', 'quotations', 'purchase orders', 'company profile'];
+        const labels = ['dashboard statistics', 'RFQs', 'quotations', 'purchase orders', 'payment status', 'company profile'];
         console.error(`Failed to load supplier ${labels[index]}:`, result.reason);
         return [labels[index]];
       });
@@ -118,6 +127,7 @@ const SupplierPortal = () => {
       if (rfqsResult.status === 'fulfilled') setRfqs(rfqsResult.value.content);
       if (quotationsResult.status === 'fulfilled') setQuotations(quotationsResult.value);
       if (ordersResult.status === 'fulfilled') setPurchaseOrders(ordersResult.value.content);
+      if (paymentsResult.status === 'fulfilled') setPayments(paymentsResult.value);
       if (profileResult.status === 'fulfilled' && profileResult.value) {
         const pData = profileResult.value;
         setProfile(pData);
@@ -141,23 +151,41 @@ const SupplierPortal = () => {
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    loadData();
   }, [supplierId]);
 
-  const showToast = (msg) => {
+  useEffect(() => {
+    if (!supplierId) {
+      setLoadError('This supplier login is not linked to a supplier account. Contact the administrator.');
+      setLoading(false);
+      return;
+    }
+    loadData();
+  }, [loadData, supplierId, storeVersion]);
+
+  useEffect(() => {
+    setActiveTab(mode === 'workspace' ? (location.state?.tab || 'rfqs') : 'dashboard');
+  }, [mode, location.state?.tab]);
+
+  const openWorkspaceTab = (tab) => {
+    if (mode === 'overview') navigate('/supplier-portal', { state: { tab } });
+    else setActiveTab(tab);
+  };
+
+  const showToast = (msg, type = 'success') => {
     setMessage(msg);
+    setMessageType(type);
     setTimeout(() => setMessage(''), 3500);
   };
 
   // Availability Toggle
   const handleAvailabilityToggle = async (rfqId, currentAvail) => {
     const newAvail = currentAvail === 'Available' ? 'Out of Stock' : 'Available';
-    await updateProductAvailability(rfqId, newAvail);
-    showToast(`Updated product availability to: ${newAvail}`);
-    loadData();
+    try {
+      updateSharedProductAvailability(rfqId, newAvail, currentUser);
+      showToast(`Updated product availability to: ${newAvail}`);
+    } catch (error) {
+      showToast(error.message, 'error');
+    }
   };
 
   // Open Decline Modal
@@ -171,10 +199,13 @@ const SupplierPortal = () => {
   const handleDeclineSubmit = async (e) => {
     e.preventDefault();
     if (!selectedRfq) return;
-    await declineRfq(selectedRfq.id, declineForm.reason, declineForm.remarks);
-    setShowDeclineModal(false);
-    showToast(`RFQ ${selectedRfq.rfqNumber || selectedRfq.id} declined.`);
-    loadData();
+    try {
+      declineSharedRfq(selectedRfq.id, declineForm.reason, declineForm.remarks, currentUser);
+      setShowDeclineModal(false);
+      showToast(`RFQ ${selectedRfq.rfqNumber || selectedRfq.id} declined.`);
+    } catch (error) {
+      showToast(error.message, 'error');
+    }
   };
 
   // Open Submit Quotation Modal
@@ -212,17 +243,23 @@ const SupplierPortal = () => {
       remarks: quotationForm.remarks,
     };
 
-    await submitQuotation(payload);
-    setShowQuotationModal(false);
-    showToast(`Quotation submitted successfully for ${selectedRfq.itemName}!`);
-    loadData();
+    try {
+      submitSharedQuotation(payload, currentUser);
+      setShowQuotationModal(false);
+      showToast(`Quotation submitted successfully for ${selectedRfq.itemName}!`);
+    } catch (error) {
+      showToast(error.message, 'error');
+    }
   };
 
   // Accept PO
   const handleAcceptPo = async (poId) => {
-    await acceptPurchaseOrder(poId);
-    showToast(`Purchase Order ${poId} accepted.`);
-    loadData();
+    try {
+      acceptSharedPurchaseOrder(poId, currentUser);
+      showToast(`Purchase Order ${poId} accepted.`);
+    } catch (error) {
+      showToast(error.message, 'error');
+    }
   };
 
   // Reject PO
@@ -235,17 +272,23 @@ const SupplierPortal = () => {
   const handleRejectPoSubmit = async (e) => {
     e.preventDefault();
     if (!selectedPo) return;
-    await rejectPurchaseOrder(selectedPo.id, poRejectReason);
-    setShowRejectPoModal(false);
-    showToast(`Purchase Order ${selectedPo.id} rejected.`);
-    loadData();
+    try {
+      rejectSharedPurchaseOrder(selectedPo.id, poRejectReason, currentUser);
+      setShowRejectPoModal(false);
+      showToast(`Purchase Order ${selectedPo.id} rejected.`);
+    } catch (error) {
+      showToast(error.message, 'error');
+    }
   };
 
   // Update Fulfillment Order Status
   const handleStatusUpdate = async (poId, newStatus) => {
-    await updateOrderStatus(poId, newStatus);
-    showToast(`Order status updated to: ${newStatus.toUpperCase()}`);
-    loadData();
+    try {
+      updateSharedOrderStatus(poId, newStatus, currentUser);
+      showToast(`Order status updated to: ${newStatus.replace('_', ' ').toUpperCase()}`);
+    } catch (error) {
+      showToast(error.message, 'error');
+    }
   };
 
   // Open Invoice Modal
@@ -254,8 +297,9 @@ const SupplierPortal = () => {
     setInvoiceForm({
       invoiceNumber: `INV-${po.id.replace('PO-', '')}`,
       invoiceAmount: po.totalAmount || '',
-      fileName: `Invoice_${po.id}.pdf`,
-      fileUploaded: true,
+      invoiceDate: new Date().toISOString().slice(0, 10),
+      file: null,
+      fileName: '',
     });
     setShowInvoiceModal(true);
   };
@@ -264,22 +308,43 @@ const SupplierPortal = () => {
   const handleInvoiceSubmit = async (e) => {
     e.preventDefault();
     if (!selectedPo) return;
-    await uploadInvoice(selectedPo.id, {
-      invoiceNumber: invoiceForm.invoiceNumber,
-      invoiceAmount: parseFloat(invoiceForm.invoiceAmount) || selectedPo.totalAmount,
-      invoiceFileName: invoiceForm.fileName,
-    });
-    setShowInvoiceModal(false);
-    showToast(`Invoice ${invoiceForm.invoiceNumber} uploaded successfully for ${selectedPo.id}!`);
-    loadData();
+    if (!invoiceForm.file) {
+      showToast('Select the invoice PDF before submitting.', 'error');
+      return;
+    }
+    if (invoiceForm.file.type !== 'application/pdf' && !invoiceForm.file.name.toLowerCase().endsWith('.pdf')) {
+      showToast('Only PDF invoices are supported.', 'error');
+      return;
+    }
+    if (invoiceForm.file.size > 10 * 1024 * 1024) {
+      showToast('Invoice PDF must be 10 MB or smaller.', 'error');
+      return;
+    }
+    try {
+      await uploadSharedInvoice(selectedPo.id, {
+        supplierId,
+        invoiceNumber: invoiceForm.invoiceNumber,
+        invoiceAmount: Number(invoiceForm.invoiceAmount),
+        invoiceDate: invoiceForm.invoiceDate,
+        file: invoiceForm.file,
+      });
+      setShowInvoiceModal(false);
+      setInvoiceForm((form) => ({ ...form, file: null, fileName: '' }));
+      showToast(`Invoice ${invoiceForm.invoiceNumber} uploaded successfully for ${selectedPo.id}!`);
+    } catch (error) {
+      showToast(error.message || 'Invoice upload failed. Please retry.', 'error');
+    }
   };
 
   // Save Profile
   const handleProfileSave = async (e) => {
     e.preventDefault();
-    await updateSupplierProfile(supplierId, profileForm);
-    showToast('Company profile updated successfully.');
-    loadData();
+    try {
+      updateSharedSupplierProfile(supplierId, profileForm, currentUser);
+      showToast('Company profile updated successfully.');
+    } catch (error) {
+      showToast(error.message, 'error');
+    }
   };
 
   // Filtered Quotations
@@ -293,6 +358,14 @@ const SupplierPortal = () => {
     if (rfqFilter === 'all') return true;
     return r.status === rfqFilter;
   });
+  const paymentForOrder = (po) => payments.find((payment) =>
+    payment.poNumber === po.id || payment.poId === po.id);
+  const canUploadInvoice = (po) => {
+    const payment = paymentForOrder(po);
+    return !po.invoiceFileId
+      && (!payment || (payment.status === 'pending' && !payment.invoiceFileId))
+      && !['closed', 'cancelled', 'rejected'].includes(po.status);
+  };
 
   return (
     <div className="page" style={{ paddingBottom: 60 }}>
@@ -300,12 +373,12 @@ const SupplierPortal = () => {
       {message && (
         <div style={{
           position: 'fixed', top: 20, right: 20, zIndex: 9999,
-          background: 'var(--success, #10b981)', color: '#fff',
+          background: messageType === 'error' ? 'var(--danger, #dc2626)' : 'var(--success, #10b981)', color: '#fff',
           padding: '12px 24px', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
           display: 'flex', alignItems: 'center', gap: 10, fontWeight: 600,
           animation: 'fadeIn 0.3s ease-out'
         }}>
-          <CheckCircle size={20} />
+          {messageType === 'error' ? <AlertTriangle size={20} /> : <CheckCircle size={20} />}
           <span>{message}</span>
         </div>
       )}
@@ -336,7 +409,9 @@ const SupplierPortal = () => {
                 <span className="badge badge-info">Equipment & Furniture Vendor</span>
               </div>
               <p style={{ margin: '4px 0 0', color: 'var(--text-secondary)', fontSize: 'var(--font-sm)' }}>
-                Welcome to your EPS Supplier Workspace • Isolated Vendor Account ({supplierId})
+                  {mode === 'overview'
+                    ? `Supplier overview • Account ${supplierId}`
+                    : `Supplier workspace • Account ${supplierId}`}
               </p>
             </div>
           </div>
@@ -354,17 +429,17 @@ const SupplierPortal = () => {
         </div>
       )}
 
-      {/* Supplier Navigation Tabs */}
-      <div style={{
+      {/* Detailed supplier operations live in Portal Workspace; dashboard is an overview. */}
+      {mode === 'workspace' && <div style={{
         display: 'flex', gap: 8, borderBottom: '1px solid var(--border-color)',
         marginBottom: 'var(--space-xl)', overflowX: 'auto', paddingBottom: 2
       }}>
         {[
-          { id: 'dashboard', label: 'Dashboard', icon: Building2 },
           { id: 'rfqs', label: `RFQs (${rfqs.filter(r => r.status === 'pending').length})`, icon: FileText },
           { id: 'quotations', label: 'Submitted Quotations', icon: CheckSquare },
           { id: 'orders', label: `Purchase Orders (${purchaseOrders.length})`, icon: Package },
           { id: 'invoices', label: 'Upload Invoice', icon: Upload },
+          { id: 'payments', label: 'Payment Status', icon: CreditCard },
           { id: 'profile', label: 'Company Profile & KYC', icon: Award },
         ].map(tab => {
           const Icon = tab.icon;
@@ -388,7 +463,7 @@ const SupplierPortal = () => {
             </button>
           );
         })}
-      </div>
+      </div>}
 
       {/* ── DASHBOARD TAB ── */}
       {activeTab === 'dashboard' && (
@@ -460,16 +535,19 @@ const SupplierPortal = () => {
           <div className="card">
             <div className="card-title" style={{ marginBottom: 'var(--space-md)' }}>Supplier Quick Workflow Actions</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-              <button className="btn btn-primary" onClick={() => setActiveTab('rfqs')}>
+              <button className="btn btn-primary" onClick={() => openWorkspaceTab('rfqs')}>
                 <FileText size={18} /> View Pending RFQs ({stats.pendingRfqs})
               </button>
-              <button className="btn btn-secondary" onClick={() => setActiveTab('orders')}>
+              <button className="btn btn-secondary" onClick={() => openWorkspaceTab('orders')}>
                 <Package size={18} /> Manage Purchase Orders ({stats.purchaseOrdersReceived})
               </button>
-              <button className="btn btn-outline" onClick={() => setActiveTab('invoices')}>
+              <button className="btn btn-outline" onClick={() => openWorkspaceTab('invoices')}>
                 <Upload size={18} /> Upload PO Invoice
               </button>
-              <button className="btn btn-ghost" onClick={() => setActiveTab('profile')}>
+              <button className="btn btn-outline" onClick={() => openWorkspaceTab('payments')}>
+                <CreditCard size={18} /> Payment Status ({payments.length})
+              </button>
+              <button className="btn btn-ghost" onClick={() => openWorkspaceTab('profile')}>
                 <Award size={18} /> View KYC Status
               </button>
             </div>
@@ -479,7 +557,7 @@ const SupplierPortal = () => {
           <div className="card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-md)' }}>
               <div className="card-title">Pending Quotation Requests (RFQs)</div>
-              <button className="btn btn-ghost btn-sm" onClick={() => setActiveTab('rfqs')}>
+              <button className="btn btn-ghost btn-sm" onClick={() => openWorkspaceTab('rfqs')}>
                 View All RFQs <ChevronRight size={16} />
               </button>
             </div>
@@ -778,22 +856,15 @@ const SupplierPortal = () => {
                     </div>
 
                     {/* Order Status Progress Pipeline */}
-                    {['accepted', 'processing', 'packed', 'shipped', 'delivered'].includes(po.status) && (
+                    {['accepted', 'in_transit'].includes(po.status) && (
                       <div style={{ margin: 'var(--space-md) 0', padding: 'var(--space-md)', background: 'rgba(99,102,241,0.04)', borderRadius: 8, border: '1px border-subtle' }}>
                         <div style={{ fontSize: 'var(--font-xs)', fontWeight: 700, color: 'var(--primary)', marginBottom: 8 }}>
                           Order Fulfillment Pipeline Status:
                         </div>
                         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                          {['processing', 'packed', 'shipped', 'delivered'].map(st => (
-                            <button
-                              key={st}
-                              className={`btn btn-sm ${po.status === st ? 'btn-primary' : 'btn-outline'}`}
-                              onClick={() => handleStatusUpdate(po.id, st)}
-                              style={{ textTransform: 'capitalize', fontSize: 'var(--font-xs)' }}
-                            >
-                              Mark as {st}
-                            </button>
-                          ))}
+                          <button className="btn btn-sm btn-primary" onClick={() => handleStatusUpdate(po.id, po.status === 'accepted' ? 'in_transit' : 'delivered')}>
+                            {po.status === 'accepted' ? 'Mark Dispatched' : 'Mark Delivered'}
+                          </button>
                         </div>
                       </div>
                     )}
@@ -801,10 +872,12 @@ const SupplierPortal = () => {
                     {/* Action Bar */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginTop: 'var(--space-md)' }}>
                       <div>
-                        {po.invoiceNumber ? (
+                        {po.invoiceFileId ? (
                           <span className="badge badge-success" style={{ gap: 4 }}>
                             <CheckCircle size={14} /> Invoice Uploaded ({po.invoiceNumber})
                           </span>
+                        ) : paymentForOrder(po) && paymentForOrder(po).status !== 'pending' ? (
+                          <span className="badge badge-info">Invoice/payment already {getStatusLabel(paymentForOrder(po).status)}</span>
                         ) : (
                           <button className="btn btn-outline btn-sm" onClick={() => openInvoiceModal(po)}>
                             <Upload size={14} /> Upload Invoice PDF
@@ -854,11 +927,20 @@ const SupplierPortal = () => {
                   value={selectedPo?.id || ''}
                   onChange={(e) => {
                     const po = purchaseOrders.find(p => p.id === e.target.value);
-                    if (po) openInvoiceModal(po);
+                    if (po) {
+                      setSelectedPo(po);
+                      setInvoiceForm({
+                        invoiceNumber: po.invoiceNumber || `INV-${po.id.replace('PO-', '')}`,
+                        invoiceAmount: po.invoiceAmount || po.totalAmount || '',
+                        invoiceDate: new Date().toISOString().slice(0, 10),
+                        file: null,
+                        fileName: '',
+                      });
+                    }
                   }}
                 >
                   <option value="">-- Select PO --</option>
-                  {purchaseOrders.map(po => (
+                  {purchaseOrders.filter(canUploadInvoice).map(po => (
                     <option key={po.id} value={po.id}>
                       {po.id} - {po.items?.[0]?.name} ({formatCurrency(po.totalAmount)})
                     </option>
@@ -868,7 +950,7 @@ const SupplierPortal = () => {
 
               {selectedPo && (
                 <>
-                  <div className="grid grid-2 gap-md" style={{ marginBottom: 'var(--space-md)' }}>
+                  <div className="grid grid-3 gap-md" style={{ marginBottom: 'var(--space-md)' }}>
                     <div className="form-group">
                       <label className="form-label">Invoice Number *</label>
                       <input
@@ -890,29 +972,99 @@ const SupplierPortal = () => {
                         required
                       />
                     </div>
+                    <div className="form-group">
+                      <label className="form-label">Invoice Date *</label>
+                      <input
+                        type="date"
+                        className="form-control"
+                        value={invoiceForm.invoiceDate}
+                        onChange={e => setInvoiceForm({ ...invoiceForm, invoiceDate: e.target.value })}
+                        required
+                      />
+                    </div>
                   </div>
 
-                  {/* Drag and Drop PDF simulated uploader */}
-                  <div style={{
+                  <label htmlFor="supplier-invoice-file" style={{
                     border: '2px dashed var(--primary)', borderRadius: 12, padding: 'var(--space-xl)',
-                    textAlign: 'center', background: 'rgba(99,102,241,0.03)', marginBottom: 'var(--space-lg)'
+                    textAlign: 'center', background: 'rgba(99,102,241,0.03)', marginBottom: 'var(--space-lg)',
+                    display: 'block', cursor: 'pointer'
                   }}>
                     <Upload size={36} color="var(--primary)" style={{ marginBottom: 8 }} />
                     <div style={{ fontWeight: 600, color: 'var(--text-main)' }}>
-                      {invoiceForm.fileName ? invoiceForm.fileName : 'Click or Drag Invoice PDF here'}
+                      {invoiceForm.fileName || 'Select Invoice PDF'}
                     </div>
                     <span style={{ fontSize: 'var(--font-xs)', color: 'var(--text-muted)' }}>
                       Supported formats: PDF (Max size: 10MB)
                     </span>
-                  </div>
+                    <input
+                      id="supplier-invoice-file"
+                      type="file"
+                      accept="application/pdf,.pdf"
+                      hidden
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] || null;
+                        setInvoiceForm({ ...invoiceForm, file, fileName: file?.name || '' });
+                      }}
+                    />
+                  </label>
 
-                  <button type="submit" className="btn btn-primary">
+                  <button type="submit" className="btn btn-primary" disabled={!invoiceForm.file}>
                     <Upload size={18} /> Submit Invoice to Finance
                   </button>
                 </>
               )}
             </form>
           </div>
+          <div className="card">
+            <div className="card-title" style={{ marginBottom: 'var(--space-md)' }}>Submitted Invoices</div>
+            {purchaseOrders.filter((po) => po.invoiceFileId).length === 0 ? (
+              <p style={{ color: 'var(--text-muted)' }}>No invoices have been uploaded for your purchase orders.</p>
+            ) : (
+              <div className="table-container">
+                <table>
+                  <thead><tr><th>Invoice</th><th>PO</th><th>Date</th><th>Amount</th><th>Status</th><th>Document</th></tr></thead>
+                  <tbody>{purchaseOrders.filter((po) => po.invoiceFileId).map((po) => (
+                    <tr key={po.id}>
+                      <td>{po.invoiceNumber}</td><td>{po.id}</td><td>{po.invoiceDate || po.invoiceUploadedAt || '—'}</td>
+                      <td>{formatCurrency(po.invoiceAmount || po.totalAmount)}</td>
+                      <td><span className={`badge ${getStatusBadgeClass(po.invoiceStatus || 'pending')}`}>{getStatusLabel(po.invoiceStatus || 'pending')}</span></td>
+                      <td>{po.invoiceFileId && sharedInvoiceFileUrl(po.invoiceFileId)
+                        ? <a href={sharedInvoiceFileUrl(po.invoiceFileId)} target="_blank" rel="noreferrer">View PDF</a>
+                        : po.invoiceFileName || '—'}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'payments' && (
+        <div className="card">
+          <div className="card-title" style={{ marginBottom: 'var(--space-md)' }}>Payment Status</div>
+          {payments.length === 0 ? (
+            <div className="empty-state"><CreditCard size={40} /><h3>No payment records yet</h3></div>
+          ) : (
+            <div className="table-container">
+              <table>
+                <thead><tr><th>Payment</th><th>PO</th><th>Invoice</th><th>Amount</th><th>Status</th><th>Updated</th><th>Document</th></tr></thead>
+                <tbody>{payments.map((payment) => (
+                  <tr key={payment.id}>
+                    <td>{payment.id}</td>
+                    <td>{payment.poNumber || payment.poId}</td>
+                    <td>{payment.invoiceNumber || '—'}</td>
+                    <td>{formatCurrency(payment.amount)}</td>
+                    <td><span className={`badge ${getStatusBadgeClass(payment.status)}`}>{getStatusLabel(payment.status)}</span></td>
+                    <td>{payment.paidDate || payment.releasedAt || payment.createdAt || '—'}</td>
+                    <td>{payment.invoiceFileId && sharedInvoiceFileUrl(payment.invoiceFileId)
+                      ? <a href={sharedInvoiceFileUrl(payment.invoiceFileId)} target="_blank" rel="noreferrer">View PDF</a>
+                      : '—'}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
@@ -1255,21 +1407,41 @@ const SupplierPortal = () => {
                   required
                 />
               </div>
+              <div className="form-group" style={{ marginBottom: 12 }}>
+                <label className="form-label">Invoice Date *</label>
+                <input
+                  type="date" className="form-control"
+                  value={invoiceForm.invoiceDate}
+                  onChange={e => setInvoiceForm({ ...invoiceForm, invoiceDate: e.target.value })}
+                  required
+                />
+              </div>
 
-              <div style={{
+              <label htmlFor="supplier-invoice-modal-file" style={{
                 border: '2px dashed var(--primary)', borderRadius: 10, padding: 20,
-                textAlign: 'center', background: 'rgba(99,102,241,0.03)', marginBottom: 16
+                textAlign: 'center', background: 'rgba(99,102,241,0.03)', marginBottom: 16,
+                display: 'block', cursor: 'pointer'
               }}>
                 <Upload size={32} color="var(--primary)" style={{ marginBottom: 6 }} />
                 <div style={{ fontWeight: 600, fontSize: 'var(--font-sm)' }}>
-                  {invoiceForm.fileName || 'Click to select PDF document'}
+                  {invoiceForm.fileName || 'Select PDF document'}
                 </div>
                 <span style={{ fontSize: 'var(--font-xs)', color: 'var(--text-muted)' }}>PDF, Max 10MB</span>
-              </div>
+                <input
+                  id="supplier-invoice-modal-file"
+                  type="file"
+                  accept="application/pdf,.pdf"
+                  hidden
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] || null;
+                    setInvoiceForm({ ...invoiceForm, file, fileName: file?.name || '' });
+                  }}
+                />
+              </label>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
                 <button type="button" className="btn btn-outline" onClick={() => setShowInvoiceModal(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary">Upload & Submit</button>
+                <button type="submit" className="btn btn-primary" disabled={!invoiceForm.file}>Upload &amp; Submit</button>
               </div>
             </form>
           </div>

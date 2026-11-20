@@ -4,6 +4,7 @@ import com.eps.procurement.store.DemoStateStore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -29,7 +30,15 @@ public class DemoStateController {
 
     @PutMapping
     @ResponseStatus(HttpStatus.OK)
-    public ObjectNode write(@RequestBody JsonNode data) {
-        return state.write(data);
+    public ResponseEntity<ObjectNode> write(@RequestBody JsonNode body) {
+        try {
+            if (body != null && body.isObject() && body.has("data") && body.has("revision")) {
+                return ResponseEntity.ok(state.write(body.get("data"), body.get("revision").asLong()));
+            }
+            // Compatibility with older clients that send a bare snapshot.
+            return ResponseEntity.ok(state.write(body));
+        } catch (DemoStateStore.RevisionConflictException conflict) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(state.read());
+        }
     }
 }

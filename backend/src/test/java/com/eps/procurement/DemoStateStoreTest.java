@@ -1,6 +1,7 @@
 package com.eps.procurement;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.eps.procurement.store.DemoStateStore;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -31,5 +32,21 @@ class DemoStateStoreTest {
 
         assertThat(restarted.read().path("revision").asLong()).isEqualTo(1);
         assertThat(restarted.read().at("/data/requests/0/id").asText()).isEqualTo("REQ-DEMO-1");
+    }
+
+    @Test
+    void rejectsAStaleBrowserRevisionInsteadOfOverwritingNewerSharedData() {
+        DemoStateStore state = new DemoStateStore(new ObjectMapper(),
+                temporaryDirectory.resolve("shared-state.json").toString());
+        ObjectMapper mapper = new ObjectMapper();
+        ObjectNode first = mapper.createObjectNode();
+        first.putArray("requests").addObject().put("id", "REQ-1");
+        state.write(first, 0L);
+
+        ObjectNode stale = mapper.createObjectNode();
+        stale.putArray("requests").addObject().put("id", "REQ-STALE");
+        assertThatThrownBy(() -> state.write(stale, 0L))
+                .isInstanceOf(DemoStateStore.RevisionConflictException.class);
+        assertThat(state.read().at("/data/requests/0/id").asText()).isEqualTo("REQ-1");
     }
 }
