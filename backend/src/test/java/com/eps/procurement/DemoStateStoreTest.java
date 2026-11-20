@@ -49,4 +49,16 @@ class DemoStateStoreTest {
                 .isInstanceOf(DemoStateStore.RevisionConflictException.class);
         assertThat(state.read().at("/data/requests/0/id").asText()).isEqualTo("REQ-1");
     }
+
+    @Test
+    void doesNotAdvanceRevisionForAnIdenticalSnapshot() {
+        ObjectMapper mapper = new ObjectMapper();
+        DemoStateStore state = new DemoStateStore(mapper,
+                temporaryDirectory.resolve("shared-state.json").toString());
+        ObjectNode data = mapper.createObjectNode();
+        data.putArray("requests").addObject().put("id", "REQ-1");
+
+        assertThat(state.write(data, 0L).path("revision").asLong()).isEqualTo(1);
+        assertThat(state.write(data.deepCopy(), 1L).path("revision").asLong()).isEqualTo(1);
+    }
 }

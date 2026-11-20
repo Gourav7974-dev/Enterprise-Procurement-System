@@ -60,6 +60,9 @@ public class DemoStateStore {
         if (expectedRevision != null && expectedRevision != revision) {
             throw new RevisionConflictException();
         }
+        if (data != null && data.equals(nextData)) {
+            return read();
+        }
         data = nextData.deepCopy();
         revision++;
         persist();
