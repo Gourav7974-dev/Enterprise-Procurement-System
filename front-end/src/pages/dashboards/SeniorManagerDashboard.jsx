@@ -1,8 +1,10 @@
 import { requests, chartData, departments, formatCurrency } from '../../data/mockData';
+import { useEpsStore } from '../../store/epsStore';
 import { Clock, CheckCircle, AlertTriangle, TrendingUp } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, Legend } from 'recharts';
 
 const SeniorManagerDashboard = () => {
+  useEpsStore();
   const pending = requests.filter(r => r.status === 'pending_senior_manager');
 
   const stats = [

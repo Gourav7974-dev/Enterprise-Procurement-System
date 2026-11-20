@@ -237,4 +237,32 @@ class WorkflowE2ETest {
         assertThat(central.get("totalElements").asInt())
                 .isGreaterThanOrEqualTo(facilities.get("totalElements").asInt());
     }
+
+    @Test
+    void t07_requestApprovalThresholdsMatchTheConfiguredChain() throws Exception {
+        assertApprovalChainForAmount(50_000, List.of("manager"));
+        assertApprovalChainForAmount(50_001, List.of("manager", "senior_manager"));
+        assertApprovalChainForAmount(200_000, List.of("manager", "senior_manager"));
+        assertApprovalChainForAmount(200_001, List.of("manager", "senior_manager", "head"));
+    }
+
+    private void assertApprovalChainForAmount(double amount, List<String> expectedLevels) throws Exception {
+        String payload = "{\"title\":\"Policy boundary test\",\"description\":\"test\","
+                + "\"reason\":\"test\",\"category\":\"Facilities\","
+                + "\"subcategory\":\"Cleaning Supplies\",\"quantity\":1,"
+                + "\"estimatedCost\":" + amount + ",\"department\":\"Engineering\","
+                + "\"requiredDate\":\"2026-12-15\",\"createdBy\":\"" + EMPLOYEE + "\","
+                + "\"status\":\"submitted\"}";
+        JsonNode created = postJson("/api/requests", payload, 201);
+        String requestId = created.get("id").asText();
+        assertThat(created.get("status").asText()).isEqualTo("pending_manager");
+
+        for (int i = 0; i < expectedLevels.size(); i++) {
+            JsonNode approval = postJson("/api/approvals/" + requestId + "/approve",
+                    "{\"approverRole\":\"" + expectedLevels.get(i) + "\"}", 200);
+            String expectedStatus = i + 1 == expectedLevels.size()
+                    ? "approved" : "pending_" + expectedLevels.get(i + 1);
+            assertThat(approval.get("newStatus").asText()).isEqualTo(expectedStatus);
+        }
+    }
 }

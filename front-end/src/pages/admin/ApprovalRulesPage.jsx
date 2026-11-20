@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { approvalRules as initialRules, formatCurrency } from '../../data/mockData';
+import { useEpsStore } from '../../store/epsStore';
 import { Plus, Edit2, Trash2, X, GitBranch, ArrowRight, CheckCircle } from 'lucide-react';
 
 const levelLabels = { manager: 'Manager', senior_manager: 'Senior Manager', head: 'Head' };
 const levelColors = { manager: '#06b6d4', senior_manager: '#f59e0b', head: '#ef4444' };
 
 const ApprovalRulesPage = () => {
+  useEpsStore();
   const [rules, setRules] = useState([...initialRules]);
   const [showModal, setShowModal] = useState(false);
   const [editingRule, setEditingRule] = useState(null);

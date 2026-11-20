@@ -1,33 +1,13 @@
-# ProcurementMS Test Backend
-
-FastAPI mock backend for testing the React frontend role-based login flow.
+# EPS Spring Boot backend
 
 ## Run
 
-```bash
-cd backend
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
+```powershell
+mvn spring-boot:run
 ```
 
-## Test accounts
+The API listens on port `8080`. `GET /api/health` checks availability. `GET` and `PUT /api/demo-state` support shared frontend demo state.
 
-Use any of these emails with password `password123`:
+The shared demo snapshot is stored at `./data/eps-demo-state.json` relative to the backend working directory by default. Configure `EPS_DEMO_STATE_FILE` to use a persistent disk path on a hosting service. Configure `EPS_CORS_ALLOWED_ORIGINS` with the frontend origin when hosted.
 
-- `employee@demo.local`
-- `manager@demo.local`
-- `senior.manager@demo.local`
-- `head@demo.local`
-- `procurement.officer@demo.local`
-- `finance@demo.local`
-- `admin@demo.local`
-- `supplier@demo.local`
-
-## API
-
-- `GET /api/health`
-- `GET /api/roles`
-- `POST /api/login`
-- `GET /api/me`
+The API and authentication are intended for demo use with sample data, not production records.

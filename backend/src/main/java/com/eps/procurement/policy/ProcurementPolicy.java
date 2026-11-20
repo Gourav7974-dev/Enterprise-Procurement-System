@@ -20,6 +20,13 @@ public final class ProcurementPolicy {
 
     private ProcurementPolicy() {}
 
+    /** Fixed request approval chain by total estimated cost. */
+    public static List<String> approvalLevelsFor(double amount) {
+        if (amount <= 50_000) return List.of("manager");
+        if (amount <= 200_000) return List.of("manager", "senior_manager");
+        return List.of("manager", "senior_manager", "head");
+    }
+
     // ── 1. Item classification ───────────────────────────────
     public record ItemRule(String key, List<String> keywords, String category, String subcategory) {}
 

@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { purchaseOrders, formatCurrency, getStatusBadgeClass, getStatusLabel, formatDate } from '../../data/mockData';
+import { useEpsStore } from '../../store/epsStore';
 import { useNavigate } from 'react-router-dom';
 import { Search } from 'lucide-react';
 
 const PurchaseOrderList = () => {
+  useEpsStore();
   const navigate = useNavigate();
   const [statusFilter, setStatusFilter] = useState('');
   const filtered = statusFilter ? purchaseOrders.filter(po => po.status === statusFilter) : purchaseOrders;

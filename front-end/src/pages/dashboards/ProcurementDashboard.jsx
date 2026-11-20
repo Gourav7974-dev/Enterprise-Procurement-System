@@ -1,9 +1,11 @@
 import { requests, purchaseOrders, chartData, formatCurrency } from '../../data/mockData';
+import { useEpsStore } from '../../store/epsStore';
 import { CheckCircle, FileText, ShoppingCart, Package } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Legend } from 'recharts';
 import { useNavigate } from 'react-router-dom';
 
 const ProcurementDashboard = () => {
+  useEpsStore();
   const navigate = useNavigate();
   const approvedReqs = requests.filter(r => r.status === 'approved' || r.status === 'in_procurement');
 

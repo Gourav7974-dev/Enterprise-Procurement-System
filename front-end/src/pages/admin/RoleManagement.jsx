@@ -1,4 +1,5 @@
 import { roles, users } from '../../data/mockData';
+import { useEpsStore } from '../../store/epsStore';
 import { Shield, Users } from 'lucide-react';
 
 const permissionLabels = {
@@ -19,6 +20,7 @@ const permissionLabels = {
 const roleColors = ['#6366f1', '#06b6d4', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#ec4899', '#14b8a6', '#f97316', '#3b82f6'];
 
 const RoleManagement = () => {
+  useEpsStore();
   const getUserCount = (roleName) => users.filter(u => u.role === roleName).length;
 
   return (

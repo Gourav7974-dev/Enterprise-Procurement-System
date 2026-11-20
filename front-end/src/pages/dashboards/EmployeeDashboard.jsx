@@ -1,10 +1,12 @@
 import { useAuth } from '../../contexts/AuthContext';
 import { requests, chartData, formatCurrency } from '../../data/mockData';
+import { useEpsStore } from '../../store/epsStore';
 import { FileText, Clock, CheckCircle, XCircle, ShoppingBag, TrendingUp } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import { useNavigate } from 'react-router-dom';
 
 const EmployeeDashboard = () => {
+  useEpsStore();
   const { currentUser } = useAuth();
   const navigate = useNavigate();
   const myRequests = requests.filter(r => r.createdBy === currentUser?.id);

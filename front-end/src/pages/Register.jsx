@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { departments, roles } from '../data/mockData';
+import { useEpsStore } from '../store/epsStore';
 import {
   UserPlus, Mail, Lock, Eye, EyeOff, User, Building2,
   ArrowLeft, ArrowRight, Cpu, Zap, ShieldCheck, Users, BadgeCheck
@@ -9,6 +10,7 @@ import {
 import './Login.css';
 
 const Register = () => {
+  useEpsStore();
   const { register } = useAuth();
   const navigate = useNavigate();
   const [form, setForm] = useState({ name: '', email: '', password: '', confirmPassword: '', department: '', role: '' });
@@ -33,7 +35,7 @@ const Register = () => {
     setIsLoading(true);
     try {
       await new Promise(r => setTimeout(r, 800));
-      register(form.name.trim(), form.email.trim(), form.password, form.department, form.role);
+      await register(form.name.trim(), form.email.trim(), form.password, form.department, form.role);
       navigate('/dashboard');
     } catch (err) {
       setError(err.message);

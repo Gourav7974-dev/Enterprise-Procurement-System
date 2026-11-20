@@ -2,9 +2,11 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { tenders, tenderBids, suppliers, formatCurrency, formatDate, getStatusBadgeClass, getStatusLabel } from '../../data/mockData';
+import { useEpsStore } from '../../store/epsStore';
 import { Gavel, Clock, CheckCircle, FileText, IndianRupee, Calendar, AlertTriangle, Package } from 'lucide-react';
 
 const SupplierTenders = () => {
+  useEpsStore();
   const { currentUser } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('tenders');

@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { departments as initialDepts, formatCurrency } from '../../data/mockData';
+import { useEpsStore } from '../../store/epsStore';
 import { Plus, Edit2, Trash2, X, Building2 } from 'lucide-react';
 
 const emptyForm = { name: '', head: '', budget: '', employeeCount: '', status: 'active' };
 
 const DepartmentManagement = () => {
+  useEpsStore();
   const [deptList, setDeptList] = useState([...initialDepts]);
   const [showModal, setShowModal] = useState(false);
   const [editingDept, setEditingDept] = useState(null);

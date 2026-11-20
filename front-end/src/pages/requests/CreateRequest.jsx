@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { categories, formatCurrency, formatDateTime } from '../../data/mockData';
+import { useEpsStore } from '../../store/epsStore';
 import {
   approvalLevelsFor,
   createRequest,
@@ -27,6 +28,7 @@ const emptyForm = {
  * and is resubmitted from here, keeping its original ID and history.
  */
 const CreateRequest = () => {
+  useEpsStore();
   const { id } = useParams();
   const { currentUser } = useAuth();
   const navigate = useNavigate();

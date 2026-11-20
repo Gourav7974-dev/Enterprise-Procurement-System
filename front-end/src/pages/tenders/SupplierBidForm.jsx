@@ -2,9 +2,11 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { tenders, tenderBids, suppliers, formatCurrency, formatDate } from '../../data/mockData';
+import { useEpsStore } from '../../store/epsStore';
 import { ArrowLeft, Plus, Trash2, Send, XCircle } from 'lucide-react';
 
 const SupplierBidForm = () => {
+  useEpsStore();
   const { id: tenderId } = useParams();
   const navigate = useNavigate();
   const { currentUser } = useAuth();

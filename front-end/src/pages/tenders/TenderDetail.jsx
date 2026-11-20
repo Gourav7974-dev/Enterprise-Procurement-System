@@ -5,12 +5,14 @@ import {
   tenders, tenderBids, suppliers, requests, users,
   formatCurrency, formatDate, formatDateTime, getStatusBadgeClass, getStatusLabel
 } from '../../data/mockData';
+import { useEpsStore } from '../../store/epsStore';
 import {
   ArrowLeft, Calendar, Tag, Hash, IndianRupee, Building2, User, FileText,
   Clock, CheckCircle, XCircle, Award, Ban, Gavel, Truck, Star, ShieldCheck
 } from 'lucide-react';
 
 const TenderDetail = () => {
+  useEpsStore();
   const { id } = useParams();
   const navigate = useNavigate();
   const { currentUser } = useAuth();

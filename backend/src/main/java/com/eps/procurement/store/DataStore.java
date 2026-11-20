@@ -58,21 +58,21 @@ public class DataStore {
 
     private void seedUsers() {
         users.addAll(List.of(
-            new User("U001", "Ravi Kumar", "ravi@company.com", "employee", "Engineering", "#6366f1", "9876543210", "active", "2024-01-15", "password123"),
-            new User("U002", "Priya Sharma", "priya@company.com", "employee", "Marketing", "#ec4899", "9876543211", "active", "2024-02-10", "password123"),
-            new User("U003", "Anand Mehta", "anand@company.com", "manager", "Engineering", "#06b6d4", "9876543212", "active", "2023-06-20", "password123"),
-            new User("U004", "Sunita Reddy", "sunita@company.com", "senior_manager", "Engineering", "#f59e0b", "9876543213", "active", "2023-03-15", "password123"),
-            new User("U005", "Vikram Singh", "vikram@company.com", "head", "Corporate", "#10b981", "9876543214", "active", "2022-01-10", "password123"),
-            new User("U006", "Deepa Nair", "deepa@company.com", "procurement_officer", "Procurement", "#8b5cf6", "9876543215", "active", "2023-08-01", "password123"),
-            new User("U007", "Rajesh Patel", "rajesh@company.com", "equipment_team", "Procurement", "#14b8a6", "9876543216", "active", "2023-09-12", "password123"),
-            new User("U008", "Kavita Joshi", "kavita@company.com", "software_team", "IT", "#f472b6", "9876543217", "active", "2023-07-05", "password123"),
-            new User("U009", "Arun Gupta", "arun@company.com", "facilities_team", "Facilities", "#fbbf24", "9876543218", "active", "2023-10-20", "password123"),
-            new User("U010", "Lakshmi Iyer", "lakshmi@company.com", "finance_officer", "Finance", "#34d399", "9876543219", "active", "2023-04-18", "password123"),
-            new User("U011", "Mohit Verma", "mohit@company.com", "admin", "IT", "#ef4444", "9876543220", "active", "2022-11-01", "password123"),
-            new User("U012", "Neha Kulkarni", "neha@company.com", "employee", "HR", "#a78bfa", "9876543221", "active", "2024-03-05", "password123"),
-            new User("U013", "Amit Shah", "amit@technohub.in", "supplier", "External", "#f97316", "9988776655", "active", "S001", "2023-01-10", "password123"),
-            new User("U014", "Neha Deshmukh", "neha@softlicense.com", "supplier", "External", "#a855f7", "9877665544", "active", "S002", "2023-03-20", "password123"),
-            new User("U015", "Ramesh Babu", "orders@furnicraft.in", "supplier", "External", "#10b981", "9766554433", "active", "S003", "2023-05-15", "password123")
+            new User("U001", "Ravi Kumar", "ravi@company.com", "employee", "Engineering", "#6366f1", "9876543210", "active", "2024-01-15", "ravi123"),
+            new User("U002", "Priya Sharma", "priya@company.com", "employee", "Marketing", "#ec4899", "9876543211", "active", "2024-02-10", "priya123"),
+            new User("U003", "Anand Mehta", "anand@company.com", "manager", "Engineering", "#06b6d4", "9876543212", "active", "2023-06-20", "anand123"),
+            new User("U004", "Sunita Reddy", "sunita@company.com", "senior_manager", "Engineering", "#f59e0b", "9876543213", "active", "2023-03-15", "sunita123"),
+            new User("U005", "Vikram Singh", "vikram@company.com", "head", "Corporate", "#10b981", "9876543214", "active", "2022-01-10", "vikram123"),
+            new User("U006", "Deepa Nair", "deepa@company.com", "procurement_officer", "Procurement", "#8b5cf6", "9876543215", "active", "2023-08-01", "deepa123"),
+            new User("U007", "Rajesh Patel", "rajesh@company.com", "equipment_team", "Procurement", "#14b8a6", "9876543216", "active", "2023-09-12", "rajesh123"),
+            new User("U008", "Kavita Joshi", "kavita@company.com", "software_team", "IT", "#f472b6", "9876543217", "active", "2023-07-05", "kavita123"),
+            new User("U009", "Arun Gupta", "arun@company.com", "facilities_team", "Facilities", "#fbbf24", "9876543218", "active", "2023-10-20", "arun123"),
+            new User("U010", "Lakshmi Iyer", "lakshmi@company.com", "finance_officer", "Finance", "#34d399", "9876543219", "active", "2023-04-18", "lakshmi123"),
+            new User("U011", "Mohit Verma", "mohit@company.com", "admin", "IT", "#ef4444", "9876543220", "active", "2022-11-01", "mohit123"),
+            new User("U012", "Neha Kulkarni", "neha@company.com", "employee", "HR", "#a78bfa", "9876543221", "active", "2024-03-05", "neha123"),
+            new User("U013", "Amit Shah", "amit@technohub.in", "supplier", "External", "#f97316", "9988776655", "active", "S001", "2023-01-10", "amit123"),
+            new User("U014", "Neha Deshmukh", "neha@softlicense.com", "supplier", "External", "#a855f7", "9877665544", "active", "S002", "2023-03-20", "neha123"),
+            new User("U015", "Ramesh Babu", "orders@furnicraft.in", "supplier", "External", "#10b981", "9766554433", "active", "S003", "2023-05-15", "orders123")
         ));
     }
 
@@ -254,7 +254,7 @@ public class DataStore {
     private void seedApprovalRules() {
         approvalRules.addAll(List.of(
             new ApprovalRule("AR001", 0, 50000, List.of("manager"), "Low value: Manager approval only"),
-            new ApprovalRule("AR002", 50001, 200000, List.of("manager", "senior_manager"), "Medium value: Manager + Senior Manager"),
+            new ApprovalRule("AR002", 50000.01, 200000, List.of("manager", "senior_manager"), "Medium value: Manager + Senior Manager"),
             new ApprovalRule("AR003", 200001, 999999999, List.of("manager", "senior_manager", "head"), "High value: Manager + Senior Manager + Head")
         ));
     }

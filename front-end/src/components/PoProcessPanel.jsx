@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { CheckCircle, Truck } from 'lucide-react';
 import { formatDateTime, getStatusBadgeClass, getStatusLabel } from '../data/mockData';
+import { useEpsStore } from '../store/epsStore';
 import {
   availablePoActions,
   canProcessPo,
@@ -16,6 +17,7 @@ import {
  * facilities, equipment) can move it along.
  */
 const PoProcessPanel = ({ po, user, compact = false }) => {
+  useEpsStore();
   const [remarks, setRemarks] = useState('');
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');

@@ -121,15 +121,9 @@ public class RequestService {
         return existing;
     }
 
-    /** First approval level for an amount, taken from the configured approval rules. */
+    /** First approval level for an amount under the fixed procurement policy. */
     public String firstApprovalLevel(double amount) {
-        return store.approvalRules.stream()
-                .filter(rule -> amount >= rule.minAmount && amount <= rule.maxAmount)
-                .findFirst()
-                .map(rule -> rule.levels)
-                .filter(levels -> levels != null && !levels.isEmpty())
-                .map(levels -> levels.get(0))
-                .orElse("manager");
+        return ProcurementPolicy.approvalLevelsFor(amount).get(0);
     }
 
     public Map<String, String> submit(String id) {

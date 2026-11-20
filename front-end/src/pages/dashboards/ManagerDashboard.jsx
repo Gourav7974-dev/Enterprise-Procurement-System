@@ -1,9 +1,11 @@
 import { requests, chartData, formatCurrency } from '../../data/mockData';
+import { useEpsStore } from '../../store/epsStore';
 import { Clock, CheckCircle, XCircle, TrendingDown, IndianRupee } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, Legend } from 'recharts';
 import { useNavigate } from 'react-router-dom';
 
 const ManagerDashboard = () => {
+  useEpsStore();
   const navigate = useNavigate();
   const pendingRequests = requests.filter(r => r.status === 'pending_manager');
 

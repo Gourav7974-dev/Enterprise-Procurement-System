@@ -1,7 +1,10 @@
 import { goodsReceiptNotes, formatDate } from '../../data/mockData';
+import { useEpsStore } from '../../store/epsStore';
 import { Package, CheckCircle, XCircle } from 'lucide-react';
 
-const GoodsReceiptList = () => (
+const GoodsReceiptList = () => {
+  useEpsStore();
+  return (
   <div className="page">
     <div className="page-header"><h1>Goods Receipt Notes</h1><p>Track deliveries and quality verification</p></div>
     {goodsReceiptNotes.length === 0 ? (
@@ -41,6 +44,7 @@ const GoodsReceiptList = () => (
       </div>
     )}
   </div>
-);
+  );
+};
 
 export default GoodsReceiptList;

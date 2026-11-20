@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { categories as initialCats } from '../../data/mockData';
+import { useEpsStore } from '../../store/epsStore';
 import { Plus, Edit2, Trash2, X, Tag, Monitor, Code, Building } from 'lucide-react';
 
 const iconMap = { Monitor, Code, Building };
@@ -9,6 +10,7 @@ const categoryColors = ['#6366f1', '#06b6d4', '#10b981'];
 const emptyCatForm = { name: '', subcategories: '', routeTo: 'equipment_team', icon: 'Monitor' };
 
 const CategoryManagement = () => {
+  useEpsStore();
   const [catList, setCatList] = useState([...initialCats]);
   const [showModal, setShowModal] = useState(false);
   const [editingCat, setEditingCat] = useState(null);

@@ -1,8 +1,10 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { suppliers } from '../../data/mockData';
+import { useEpsStore } from '../../store/epsStore';
 import { ArrowLeft, Building2, Phone, Mail, MapPin, Star, CreditCard, FileText } from 'lucide-react';
 
 const SupplierDetail = () => {
+  useEpsStore();
   const { id } = useParams();
   const navigate = useNavigate();
   const supplier = suppliers.find(s => s.id === id);

@@ -1,12 +1,13 @@
 // ============================================
 // API Configuration
 // ============================================
-// STEP 1: Set your Spring Boot backend URL below
-// STEP 2: Uncomment the real API calls in each service file
+// Set VITE_API_BASE_URL to the shared Spring Boot API URL for multi-browser sync.
 // ============================================
 
-// export const API_BASE_URL = 'http://localhost:8080/api';
-export const API_BASE_URL = ''; // empty = mock mode
+const localBackend = import.meta.env.DEV && import.meta.env.MODE !== 'test'
+  ? 'http://localhost:8080/api'
+  : '';
+export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || localBackend).replace(/\/+$/, '');
 
 /**
  * Helper: makes an authenticated API call

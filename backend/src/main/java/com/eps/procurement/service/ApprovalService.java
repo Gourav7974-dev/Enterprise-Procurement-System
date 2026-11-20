@@ -3,6 +3,7 @@ package com.eps.procurement.service;
 import com.eps.procurement.model.ApprovalRecord;
 import com.eps.procurement.model.ApprovalRule;
 import com.eps.procurement.model.ProcurementRequest;
+import com.eps.procurement.policy.ProcurementPolicy;
 import com.eps.procurement.store.DataStore;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -13,8 +14,8 @@ import org.springframework.web.server.ResponseStatusException;
 /**
  * Multi-level, amount-based approval workflow.
  *
- * <p>The chain is derived from the configured approval rules (not hardcoded amounts),
- * so an approval always moves to the next configured level and only becomes
+ * <p>The chain follows the fixed amount thresholds in {@link ProcurementPolicy},
+ * so an approval always moves to the next required level and only becomes
  * {@code approved} after the last level has signed off. Every transition raises a
  * live notification for the people who have to act next.
  */
@@ -48,14 +49,9 @@ public class ApprovalService {
         return CHAIN.contains(role) ? role : null;
     }
 
-    /** Approval levels required for an amount, taken from the configured rules. */
+    /** Approval levels required for an amount under the fixed procurement policy. */
     public List<String> levelsFor(double amount) {
-        return store.approvalRules.stream()
-                .filter(rule -> amount >= rule.minAmount && amount <= rule.maxAmount)
-                .findFirst()
-                .map(rule -> rule.levels)
-                .filter(levels -> levels != null && !levels.isEmpty())
-                .orElse(List.of("manager"));
+        return ProcurementPolicy.approvalLevelsFor(amount);
     }
 
     public Map<String, Object> pending(String role) {

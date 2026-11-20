@@ -1,9 +1,11 @@
 import { payments, chartData, formatCurrency } from '../../data/mockData';
+import { useEpsStore } from '../../store/epsStore';
 import { Clock, CheckCircle, IndianRupee, AlertTriangle } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { useNavigate } from 'react-router-dom';
 
 const FinanceDashboard = () => {
+  useEpsStore();
   const navigate = useNavigate();
   const stats = [
     { label: 'Pending Invoices', value: payments.filter(p => p.status === 'pending').length, icon: Clock, color: '#f59e0b', bg: 'rgba(245,158,11,0.1)' },

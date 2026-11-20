@@ -166,7 +166,7 @@ export const auditLogs = [
 // ── Approval Rules ──
 export const approvalRules = [
   { id: 'AR001', minAmount: 0, maxAmount: 50000, levels: ['manager'], description: 'Low value: Manager approval only' },
-  { id: 'AR002', minAmount: 50001, maxAmount: 200000, levels: ['manager', 'senior_manager'], description: 'Medium value: Manager + Senior Manager' },
+  { id: 'AR002', minAmount: 50000.01, maxAmount: 200000, levels: ['manager', 'senior_manager'], description: 'Medium value: Manager + Senior Manager' },
   { id: 'AR003', minAmount: 200001, maxAmount: Infinity, levels: ['manager', 'senior_manager', 'head'], description: 'High value: Manager + Senior Manager + Head' },
 ];
 

@@ -22,8 +22,10 @@ import {
   updateSupplierProfile
 } from '../../services/supplierPortalService';
 import { formatCurrency, getStatusBadgeClass, getStatusLabel } from '../../data/mockData';
+import { useEpsStore } from '../../store/epsStore';
 
 const SupplierPortal = () => {
+  useEpsStore();
   const { currentUser } = useAuth();
   const supplierId = currentUser?.supplierId || 'S001'; // Default to TechnoHub for demo
 

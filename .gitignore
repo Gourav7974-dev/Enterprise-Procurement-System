@@ -190,3 +190,5 @@ sketch
 
 # End of https://www.toptal.com/developers/gitignore/api/react,python
 front-end/src/assets/hero.png
+/backend/data/
+/front-end/dist/

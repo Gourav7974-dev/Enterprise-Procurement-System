@@ -1,8 +1,10 @@
 import { users, roles, departments, categories, suppliers, auditLogs } from '../../data/mockData';
+import { useEpsStore } from '../../store/epsStore';
 import { Users, Shield, Building2, FolderKanban, Truck, History } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 const AdminDashboard = () => {
+  useEpsStore();
   const navigate = useNavigate();
   const stats = [
     { label: 'Users', value: users.length, icon: Users, color: '#6366f1', bg: 'rgba(99,102,241,0.1)', to: '/admin/users' },

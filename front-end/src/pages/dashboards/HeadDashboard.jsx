@@ -1,8 +1,10 @@
 import { departments, purchaseOrders, suppliers, chartData, formatCurrency } from '../../data/mockData';
+import { useEpsStore } from '../../store/epsStore';
 import { IndianRupee, TrendingUp, ShoppingCart, Building2, PieChart as PieIcon, BarChart2 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, Legend, PieChart, Pie, Cell, RadialBarChart, RadialBar } from 'recharts';
 
 const HeadDashboard = () => {
+  useEpsStore();
   const totalBudget = departments.reduce((s, d) => s + d.budget, 0);
   const totalUsed = departments.reduce((s, d) => s + d.budgetUsed, 0);
   const utilization = Math.round((totalUsed / totalBudget) * 100);

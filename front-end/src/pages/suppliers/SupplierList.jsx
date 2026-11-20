@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { suppliers, getStatusBadgeClass, getStatusLabel } from '../../data/mockData';
+import { useEpsStore } from '../../store/epsStore';
 import { useNavigate } from 'react-router-dom';
 import { Search, Plus, Star } from 'lucide-react';
 
 const SupplierList = () => {
+  useEpsStore();
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');

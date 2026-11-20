@@ -2,9 +2,11 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { requests, formatCurrency, getStatusBadgeClass, getStatusLabel } from '../../data/mockData';
+import { useEpsStore } from '../../store/epsStore';
 import { Plus, Search, Filter } from 'lucide-react';
 
 const RequestList = () => {
+  useEpsStore();
   const { currentUser } = useAuth();
   const navigate = useNavigate();
   const [search, setSearch] = useState('');

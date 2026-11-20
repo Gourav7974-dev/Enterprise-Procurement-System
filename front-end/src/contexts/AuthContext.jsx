@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { users, roles } from '../data/mockData';
 import { subscribe, registerUser } from '../store/epsStore';
+import { makePasswordHash, verifyDemoPassword } from '../services/demoCredentials';
 
 const AuthContext = createContext(null);
 
@@ -62,19 +63,21 @@ export const AuthProvider = ({ children }) => {
   };
 
   // Login by email + password (mock — matches email, accepts any password)
-  const loginWithCredentials = (email, password) => {
+  const loginWithCredentials = async (email, password) => {
     if (!email || !password) throw new Error('Email and password are required');
     const user = users.find((u) => u.email.toLowerCase() === email.toLowerCase());
     if (!user) throw new Error('No account found with this email address');
     if (user.status !== 'active') throw new Error('Your account has been deactivated. Contact admin.');
+    if (!await verifyDemoPassword(user, password)) throw new Error('Invalid email or password');
     setCurrentUser({ ...user });
     persist(user);
     return user;
   };
 
   /** Register with the role chosen on the sign-up form. */
-  const register = (name, email, password, department, role = 'employee') => {
-    const newUser = registerUser({ name, email, password, department, role });
+  const register = async (name, email, password, department, role = 'employee') => {
+    const passwordHash = await makePasswordHash(password);
+    const newUser = registerUser({ name, email, passwordHash, department, role });
     setCurrentUser({ ...newUser });
     persist(newUser);
     return newUser;

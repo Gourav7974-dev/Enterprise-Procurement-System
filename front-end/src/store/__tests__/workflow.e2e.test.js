@@ -7,6 +7,24 @@
 import { describe, it, expect } from 'vitest';
 import * as store from '../epsStore';
 import { validateItemCategory, canProcessCategory } from '../procurementPolicy';
+import { normalizeSharedSnapshot } from '../../data/sharedDataSync';
+
+describe('approval amount routing', () => {
+  it('uses the requested manager, senior manager, and head thresholds', () => {
+    expect(store.approvalLevelsFor(50000)).toEqual(['manager']);
+    expect(store.approvalLevelsFor(50001)).toEqual(['manager', 'senior_manager']);
+    expect(store.approvalLevelsFor(200000)).toEqual(['manager', 'senior_manager']);
+    expect(store.approvalLevelsFor(200001)).toEqual(['manager', 'senior_manager', 'head']);
+    expect(store.approvalLevelsFor(50000.5)).toEqual(['manager', 'senior_manager']);
+  });
+
+  it('restores the unbounded high-value tier after JSON converts Infinity to null', () => {
+    const restored = normalizeSharedSnapshot({
+      approvalRules: [{ id: 'AR003', minAmount: 200001, maxAmount: null, levels: ['manager', 'senior_manager', 'head'] }],
+    });
+    expect(restored.approvalRules[0].maxAmount).toBe(Infinity);
+  });
+});
 
 const employee = { id: 'U001', name: 'Ravi Kumar', role: 'employee', department: 'IT' };
 const manager = { id: 'U003', name: 'Anand Mehta', role: 'manager' };

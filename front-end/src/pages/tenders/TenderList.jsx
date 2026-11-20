@@ -2,9 +2,11 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { tenders, tenderBids, suppliers, formatCurrency, formatDate, getStatusBadgeClass, getStatusLabel } from '../../data/mockData';
+import { useEpsStore } from '../../store/epsStore';
 import { Plus, Search, Gavel, Clock, Users, IndianRupee, AlertTriangle } from 'lucide-react';
 
 const TenderList = () => {
+  useEpsStore();
   const { currentUser } = useAuth();
   const navigate = useNavigate();
   const [search, setSearch] = useState('');

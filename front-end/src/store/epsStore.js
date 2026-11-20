@@ -12,6 +12,7 @@
  * comes from /api/notifications/stream (SSE).
  */
 import { useEffect, useState } from 'react';
+import { persistSharedData } from '../data/sharedDataSync';
 import {
   requests,
   approvalHistory,
@@ -68,6 +69,7 @@ export const subscribe = (listener) => {
 
 export const emitChange = () => {
   version += 1;
+  persistSharedData();
   listeners.forEach((l) => {
     try {
       l(version);
@@ -212,11 +214,12 @@ export const getAuditLogs = ({ entity, action, userId, search } = {}) =>
 // ── Approval chain ───────────────────────────────────────────
 export const CHAIN = ['manager', 'senior_manager', 'head'];
 
-/** Levels required for an amount, straight from the configured approval rules. */
+/** Fixed approval thresholds used by the employee preview and request workflow. */
 export const approvalLevelsFor = (amount) => {
   const value = Number(amount) || 0;
-  const rule = approvalRules.find((r) => value >= r.minAmount && value <= r.maxAmount);
-  return rule?.levels?.length ? rule.levels : ['manager'];
+  if (value <= 50000) return ['manager'];
+  if (value <= 200000) return ['manager', 'senior_manager'];
+  return ['manager', 'senior_manager', 'head'];
 };
 
 export const statusForLevel = (role) => `pending_${role}`;
@@ -1161,8 +1164,8 @@ export const saveUser = (data, actor, existingId = null) => {
 };
 
 /** Register a self-service account with the role chosen at sign-up. */
-export const registerUser = ({ name, email, password, department, role = 'employee' }) => {
-  if (!name || !email || !password) throw new Error('All fields are required');
+export const registerUser = ({ name, email, password, passwordHash, department, role = 'employee' }) => {
+  if (!name || !email || (!password && !passwordHash)) throw new Error('All fields are required');
   if (users.some((u) => u.email.toLowerCase() === String(email).toLowerCase())) {
     throw new Error('An account with this email already exists');
   }
@@ -1170,6 +1173,7 @@ export const registerUser = ({ name, email, password, department, role = 'employ
     {
       name,
       email,
+      ...(passwordHash ? { passwordHash } : {}),
       role,
       department: department || 'Engineering',
       phone: '',
